@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Luís Paulo Fontes — MVP v48</title>
+<style>
+body{font-family:Arial;margin:0;background:#eef1f4}.box{max-width:700px;margin:20px auto;background:#fff;border-radius:16px;overflow:hidden}
+.h{background:#111827;color:#fff;padding:18px;display:flex;justify-content:space-between}.chat{height:520px;overflow:auto;padding:18px;background:#e9eef2}
+.m,.result{max-width:82%;padding:12px 15px;margin:9px 0;border-radius:17px;line-height:1.45}.ai,.result{background:#fff}.u{background:#d9fdd3;margin-left:auto}
+.result{border:1px solid #d9dee5}.small{font-size:13px;color:#667085}.typing{font-size:13px;color:#667085;padding:6px 18px;font-style:italic}
+.f{display:flex;gap:8px;padding:12px}.f input{flex:1;padding:14px;border:1px solid #ccd3da;border-radius:12px;font-size:16px}
+.f button,.h button{padding:10px 15px;border:0;border-radius:10px;background:#111827;color:#fff;font-weight:bold}.h button{background:#fff;color:#111827}
+</style>
+</head>
+<body>
+<div class="box">
+<div class="h"><b>Luís Paulo Fontes<br><small>MVP — revisão v48</small></b><button onclick="novo()">Novo atendimento</button></div>
+<div id="c" class="chat"></div><div id="t" class="typing"></div>
+<div class="small" style="padding:8px 18px">MVP de teste: após receber o CNPJ, o atendimento aguarda o retorno manual do consultor. Para simular o retorno do sistema, digite <b>produto:sim</b> ou <b>produto:nao</b>.</div><div class="f"><input id="i" placeholder="Digite como cliente..."><button onclick="env()">Enviar</button></div>
+</div>
+<script>
+let s={p:"name"}, c=document.getElementById("c"), i=document.getElementById("i"), t=document.getElementById("t");
+const norm=x=>x.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+function add(x,u){c.innerHTML += '<div class="m '+(u?"u":"ai")+'">'+x+'</div>';c.scrollTop=c.scrollHeight}
+function result(x){c.innerHTML += '<div class="result">'+x+'</div>';c.scrollTop=c.scrollHeight}
+function say(x,cb){t.textContent="digitando...";setTimeout(()=>{t.textContent="";add(x);if(cb)cb()},700)}
+function novo(){s={p:"name"};c.innerHTML="";add("Oi! Tudo bem? Aqui é o Luís.");setTimeout(()=>add("Com quem eu estou falando?"),450)}
+function env(){let x=i.value.trim();if(!x)return;add(x,1);i.value="";setTimeout(()=>go(x),200)}
+const bancos=[["bb","Banco do Brasil"],["banco do brasil","Banco do Brasil"],["banrisul","Banrisul"],["bradesco","Bradesco"],["cora","Cora"],["nubank","Nubank"],["c6","C6 Bank"],["mercado pago","Mercado Pago"],["picpay","PicPay"],["inter","Inter"],["sicredi","Sicredi"],["sicoob","Sicoob"],["caixa","Caixa"],["itau","Itaú"],["santander","Santander"]];
+const extras=/\b(credito|financiamento|consorcio|cheque|emprestimo|capital de giro|antecipacao|limite)\b/;
+function banco(q){for(const x of bancos)if(q.includes(x[0]))return x[1];return null}
+function dinheiro(q){let x=norm(q),m=x.match(/([0-9]+(?:[.,][0-9]+)?)\s*(k|mil|milhao|milhoes|mi)?/);if(!m)return 0;let v=parseFloat(m[1].replace(",",".")),u=m[2]||"";if(/k|mil/.test(u))v*=1000;if(/milhao|milhoes|mi/.test(u))v*=1000000;return v}
+function go(x){let q=norm(x);
+if(s.p!=="name"&&extras.test(q)&&!/^produto:/.test(q))return say("Sobre crédito, financiamento, consórcio, cheque, empréstimo ou outras soluções: isso só pode ser avaliado depois da abertura da conta, junto com o gerente responsável pela sua conta. Primeiro vamos concluir o processo da conta e, depois, o gerente poderá verificar as opções disponíveis para sua empresa.");
+if(s.p==="name"){s.name=x.split(/\s+/)[0]||x;s.p="interest";return say("Prazer, "+s.name+"! Me conta, o que você está procurando hoje para sua empresa?")}
+if(s.p==="interest"){s.p="cnpj";if(extras.test(q))return say("Entendi, "+s.name+". Crédito, financiamento, consórcio, cheque e outros produtos desse tipo dependem de análise do banco e podem ser avaliados posteriormente, depois da abertura da conta. Primeiro vamos verificar se existe disponibilidade de conta ou máquina para sua empresa. Me informe o CNPJ, por favor.");return say("Perfeito, "+s.name+". Para eu verificar a disponibilidade das soluções para sua empresa, me informe o CNPJ, por favor.")}
+if(s.p==="cnpj"){if(x.replace(/\D/g,"").length<11)return say("Pode me informar o CNPJ completo, por favor?");s.cnpj=x;s.p="waiting_operator";return say("Perfeito, "+s.name+". Recebi o CNPJ. Vou consultar a disponibilidade das soluções para sua empresa. Só um instante, por favor.")}
+if(s.p==="waiting_operator"){if(q==="produto:sim"||q==="produto sim"||q==="tem produto"||q==="produto disponivel"||q==="produto disponível"){s.product=true;s.p="account";result("<b>Consulta realizada pelo consultor</b><br>✅ Há produto disponível para a empresa.");return say("Pronto, "+s.name+". A consulta foi realizada e temos produto disponível para sua empresa. Vamos continuar: hoje você já possui uma conta PJ? Se sim, qual banco ou instituição financeira você utiliza?")}if(q==="produto:nao"||q==="produto nao"||q==="produto não"||q==="sem produto"){s.product=false;s.p="done";result("<b>Consulta realizada pelo consultor</b><br>ℹ️ No momento, não há produto disponível para seguir por este atendimento.");return say("Entendi, "+s.name+". Neste momento não temos uma solução disponível para seguir por aqui. Obrigado pelo seu contato.")}return say("Já estou fazendo a consulta para você, "+s.name+". Assim que eu tiver o retorno, continuo o atendimento.")}
+if(s.p==="account"){let b=banco(q);if(b){s.bank=b;s.p="machine";return say("Perfeito, "+s.name+". Entendi que você utiliza o "+b+". E hoje você também utiliza alguma máquina de cartão? Se sim, qual?")}if(/^sim\b|^tenho\b|^possuo\b/.test(q)){s.p="bank";return say("Perfeito, "+s.name+". Qual banco ou instituição financeira você utiliza atualmente na sua conta PJ?")}if(/^nao\b|^não\b/.test(q)){s.p="turnover";return say("Entendi, "+s.name+". E quanto sua empresa fatura aproximadamente por mês?")}s.bank=x;s.p="machine";return say("Entendi, "+s.name+". E hoje você também utiliza alguma máquina de cartão? Se sim, qual?")}
+if(s.p==="bank"){s.bank=banco(q)||x;s.p="machine";return say("Perfeito, "+s.name+". Entendi. E hoje você também utiliza alguma máquina de cartão? Se sim, qual?")}
+if(s.p==="machine"){s.machine=x;s.p="turnover";return say("Perfeito, "+s.name+". Quanto sua empresa fatura aproximadamente por mês?")}
+if(s.p==="turnover"){let v=dinheiro(q);if(!v)return say("Pode me passar uma média mesmo, "+s.name+". Não precisa ser exato.");s.faturamento=v;s.p="pain";return say("Perfeito, "+s.name+". Entendi. O que mais pesa para você hoje: taxa, suporte, prazo de recebimento ou custo da operação?")}
+if(s.p==="pain"){s.p="meeting";return say("Entendi. Se eu conseguir uma condição que realmente melhore esse ponto, faz sentido a gente comparar?")}
+if(s.p==="meeting"){s.p="done";return say("Perfeito. A gente pode fazer uma conversa rápida online ou, se preferir, pessoalmente. Qual dos dois fica melhor para você?")}
+if(s.p==="done"&&/^(ok|blz|beleza|ate|até|obrigado|obrigada|valeu)\b/.test(q))add("👍")}
+novo();i.addEventListener("keydown",e=>{if(e.key==="Enter")env()});
+</script>
+</body>
+</html>
