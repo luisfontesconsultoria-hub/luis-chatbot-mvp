@@ -47,6 +47,8 @@ jobs:
         run: node backend/core/acquisition-sources.test.js
       - name: Run lead scoring tests
         run: node backend/core/lead-scoring.test.js
+      - name: Run lead routing tests
+        run: node backend/core/lead-routing.test.js
       - name: Run HTTP server health test
         run: node backend/server.test.js
       - name: Run HTTP server configuration test
