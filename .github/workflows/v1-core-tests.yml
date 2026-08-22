@@ -23,3 +23,5 @@ jobs:
         run: node backend/core/pipeline.integration.test.js
       - name: Run server environment tests
         run: node backend/config/env.test.js
+      - name: Run Meta WhatsApp adapter tests
+        run: node backend/adapters/whatsapp-meta.test.js
