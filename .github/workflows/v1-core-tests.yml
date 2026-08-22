@@ -35,3 +35,5 @@ jobs:
         run: node backend/core/observability.test.js
       - name: Run media normalization tests
         run: node backend/core/media.test.js
+      - name: Run privacy data policy tests
+        run: node backend/privacy/data-policy.test.js
