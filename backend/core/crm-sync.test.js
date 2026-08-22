@@ -1,0 +1,2 @@
+const { syncLeadToCrm } = require('./crm-sync');
+(async()=>{let got; const repo={updateLead:async(id,p)=>{got={id,p};}}; await syncLeadToCrm({repository:repo,leadId:'lead-1',input:{source:'linkedin'},score:82,route:{queue:'PRIORITY',priority:'HIGH',reason:'HOT_LEAD'}}); if(got.id!=='lead-1'||got.p.source!=='LINKEDIN'||got.p.score!==82||got.p.queue!=='PRIORITY') throw Error('CRM sync failed'); console.log('PASS CRM sync');})();
