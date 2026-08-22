@@ -13,5 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Run deterministic SDR regression tests
+      - name: Run SDR regression tests
         run: node backend/core/pipeline.test.js
+      - name: Run decision contract tests
+        run: node backend/core/decision-contract.test.js
