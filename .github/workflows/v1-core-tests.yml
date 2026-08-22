@@ -21,3 +21,5 @@ jobs:
         run: node backend/core/transition-guard.test.js
       - name: Run pipeline integration tests
         run: node backend/core/pipeline.integration.test.js
+      - name: Run server environment tests
+        run: node backend/config/env.test.js
