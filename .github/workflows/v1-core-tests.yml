@@ -33,3 +33,5 @@ jobs:
         run: node backend/core/retry.test.js
       - name: Run secret-safe logging tests
         run: node backend/core/observability.test.js
+      - name: Run media normalization tests
+        run: node backend/core/media.test.js
