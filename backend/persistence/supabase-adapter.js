@@ -1,4 +1,4 @@
-/** Dependency-light Supabase adapter boundary. Inject a server-side client; never create it from browser code. */
+/** Server-side Supabase adapter aligned with the existing V1 schema. */
 const { TABLES, assertRepository } = require('./supabase-contract');
 
 function createSupabaseRepository(client) {
@@ -27,15 +27,25 @@ function createSupabaseRepository(client) {
       if (error) throw error;
       return data;
     },
-    async createActivity(payload) {
-      const { data, error } = await client.from(TABLES.activities).insert(payload).select('*').single();
+    async createMessage(payload) {
+      const { data, error } = await client.from(TABLES.messages).insert(payload).select('*').single();
       if (error) throw error;
       return data;
     },
-    async listActivities({ leadId, limit = 100 }) {
-      const { data, error } = await client.from(TABLES.activities).select('*').eq('leadId', leadId).order('createdAt', { ascending: false }).limit(limit);
+    async listMessages({ leadId, limit = 100 } = {}) {
+      const { data, error } = await client.from(TABLES.messages).select('*').eq('lead_id', leadId).order('created_at', { ascending:false }).limit(limit);
       if (error) throw error;
       return data || [];
+    },
+    async createEvent(payload) {
+      const { data, error } = await client.from(TABLES.events).insert(payload).select('*').single();
+      if (error) throw error;
+      return data;
+    },
+    async createAudit(payload) {
+      const { data, error } = await client.from(TABLES.audit).insert(payload).select('*').single();
+      if (error) throw error;
+      return data;
     }
   });
 }
