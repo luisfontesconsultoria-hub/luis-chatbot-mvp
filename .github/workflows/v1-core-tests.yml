@@ -29,3 +29,7 @@ jobs:
         run: node backend/http/meta-webhook.test.js
       - name: Run webhook security tests
         run: node backend/security/webhook-security.test.js
+      - name: Run bounded retry tests
+        run: node backend/core/retry.test.js
+      - name: Run secret-safe logging tests
+        run: node backend/core/observability.test.js
