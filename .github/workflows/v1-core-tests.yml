@@ -39,3 +39,5 @@ jobs:
         run: node backend/privacy/data-policy.test.js
       - name: Run AI provider secret guard tests
         run: node backend/ai/provider.test.js
+      - name: Run Meta-to-SDR end-to-end contract
+        run: node backend/core/e2e-contract.test.js
