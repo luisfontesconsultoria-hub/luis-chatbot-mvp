@@ -17,3 +17,5 @@ jobs:
         run: node backend/core/pipeline.test.js
       - name: Run decision contract tests
         run: node backend/core/decision-contract.test.js
+      - name: Run state transition tests
+        run: node backend/core/transition-guard.test.js
