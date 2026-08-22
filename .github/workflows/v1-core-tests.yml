@@ -25,3 +25,5 @@ jobs:
         run: node backend/config/env.test.js
       - name: Run Meta WhatsApp adapter tests
         run: node backend/adapters/whatsapp-meta.test.js
+      - name: Run Meta webhook HTTP adapter tests
+        run: node backend/http/meta-webhook.test.js
