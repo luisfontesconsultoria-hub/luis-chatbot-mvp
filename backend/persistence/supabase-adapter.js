@@ -1,4 +1,4 @@
-/** Server-side Supabase adapter aligned with the existing V1 schema. */
+/** Server-side Supabase adapter aligned with the actual V1 schema. */
 const { TABLES, assertRepository } = require('./supabase-contract');
 const { toDbLead, fromDbLead } = require('./crm-mapper');
 
@@ -37,7 +37,16 @@ function createSupabaseRepository(client) {
       return fromDbLead(data);
     },
     async createMessage(payload) {
-      const { data, error } = await client.from(TABLES.messages).insert(payload).select('*').single();
+      const row = {
+        lead_id: payload.lead_id,
+        channel: payload.channel || 'WHATSAPP',
+        direction: payload.direction || 'INBOUND',
+        external_message_id: payload.external_message_id || null,
+        text_content: payload.text_content !== undefined ? payload.text_content : (payload.text || ''),
+        transcript: payload.transcript || null,
+        metadata: payload.metadata || {}
+      };
+      const { data, error } = await client.from(TABLES.messages).insert(row).select('*').single();
       if (error) throw error;
       return data;
     },
@@ -47,12 +56,26 @@ function createSupabaseRepository(client) {
       return data || [];
     },
     async createEvent(payload) {
-      const { data, error } = await client.from(TABLES.events).insert(payload).select('*').single();
+      const row = {
+        lead_id: payload.lead_id || null,
+        type: payload.type || payload.event_type || 'SYSTEM',
+        idempotency_key: payload.idempotency_key || null,
+        payload: payload.payload || payload.metadata || {}
+      };
+      const { data, error } = await client.from(TABLES.events).insert(row).select('*').single();
       if (error) throw error;
       return data;
     },
     async createAudit(payload) {
-      const { data, error } = await client.from(TABLES.audit).insert(payload).select('*').single();
+      const row = {
+        lead_id: payload.lead_id || null,
+        action: payload.action || payload.event_type || 'SYSTEM',
+        from_status: payload.from_status || null,
+        to_status: payload.to_status || null,
+        actor: payload.actor || 'SYSTEM',
+        metadata: payload.metadata || payload.payload || {}
+      };
+      const { data, error } = await client.from(TABLES.audit).insert(row).select('*').single();
       if (error) throw error;
       return data;
     }
