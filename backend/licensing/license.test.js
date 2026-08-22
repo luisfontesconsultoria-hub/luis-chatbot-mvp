@@ -1,0 +1,11 @@
+const { signLicense, verifyLicense, assertLicensed } = require('./license');
+const secret='test-secret';
+const base={tenantId:'client-001',status:'ACTIVE',expiresAt:'2099-01-01T00:00:00.000Z',plan:'STANDARD'};
+const license={...base,signature:signLicense(base,secret)};
+if(!verifyLicense(license,secret).valid) throw Error('valid license rejected');
+if(verifyLicense({...license,signature:'bad'},secret).valid) throw Error('bad signature accepted');
+if(verifyLicense({...license,status:'SUSPENDED'},secret).reason!=='INVALID_SIGNATURE') throw Error('tampered status accepted');
+const expired={...base,expiresAt:'2000-01-01T00:00:00.000Z'}; expired.signature=signLicense(expired,secret);
+if(verifyLicense(expired,secret).reason!=='LICENSE_EXPIRED') throw Error('expired license accepted');
+assertLicensed(license,secret);
+console.log('PASS commercial license verification');
