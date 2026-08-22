@@ -1,0 +1,13 @@
+{
+  "name": "luis-sdr-v1-core",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Core do SDR/Chat-IA V1",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node core/pipeline.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
