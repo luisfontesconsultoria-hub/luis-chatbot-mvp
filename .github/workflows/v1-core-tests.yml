@@ -45,6 +45,8 @@ jobs:
         run: node backend/core/attribution.test.js
       - name: Run HTTP server health test
         run: node backend/server.test.js
+      - name: Run HTTP server configuration test
+        run: node backend/http/server-config.test.js
       - name: Run commercial license tests
         run: node backend/licensing/license.test.js
       - name: Run tenant access tests
