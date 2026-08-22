@@ -37,3 +37,5 @@ jobs:
         run: node backend/core/media.test.js
       - name: Run privacy data policy tests
         run: node backend/privacy/data-policy.test.js
+      - name: Run AI provider secret guard tests
+        run: node backend/ai/provider.test.js
