@@ -4,6 +4,9 @@
   "private": true,
   "description": "Backend V1 para SDR, CRM e WhatsApp",
   "main": "server/http.js",
-  "scripts": { "start": "node server/http.js", "test": "node server/health.test.js && node server/security/idempotency.test.js && node backend/persistence/crm-mapper.test.js && node backend/persistence/supabase-integration.test.js" },
+  "scripts": {
+    "start": "node server/http.js",
+    "test": "node server/health.test.js && node server/security/idempotency.test.js && node backend/persistence/crm-mapper.test.js && node backend/persistence/supabase-integration.test.js && node server/e2e-contract.test.js"
+  },
   "engines": { "node": ">=20" }
 }
