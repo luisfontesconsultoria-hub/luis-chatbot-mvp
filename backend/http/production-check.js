@@ -3,7 +3,8 @@ const REQUIRED = ['SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','WHATSAPP_VERIFY_TO
 
 function preflight(env = process.env) {
   const missing = REQUIRED.filter(k => !env[k]);
-  return { ready: missing.length === 0, missing };
+  const configured = REQUIRED.filter(k => Boolean(env[k]));
+  return { ready: missing.length === 0, missing, configured };
 }
 
 function assertPilotReady(env = process.env) {
