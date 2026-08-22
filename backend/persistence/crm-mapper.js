@@ -1,9 +1,10 @@
-/** Maps the CRM's camelCase model to the existing Supabase snake_case V1 schema. */
+/** Maps the CRM model to the actual V1 Supabase lead schema. */
 const LEAD_TO_DB = Object.freeze({
-  id:'id', companyName:'company_name', contactName:'contact_name', phone:'phone', email:'email',
-  cnpj:'cnpj', source:'source', interest:'product_interest', notes:'notes', status:'status',
-  score:'score', classification:'classification', queue:'queue', priority:'priority',
-  nextAction:'next_action', createdAt:'created_at', updatedAt:'updated_at', tenantId:'tenant_id'
+  id:'id', name:'name', companyName:'company_name', phone:'phone', cnpj:'cnpj',
+  source:'source', campaign:'campaign', interest:'product_interest',
+  bankCurrent:'bank_current', machineCurrent:'machine_current', monthlyRevenue:'monthly_revenue',
+  painPoint:'pain_point', status:'status', owner:'owner', nextAction:'next_action',
+  consentAt:'consent_at', createdAt:'created_at', updatedAt:'updated_at'
 });
 function toDbLead(input = {}) {
   const out = {};
