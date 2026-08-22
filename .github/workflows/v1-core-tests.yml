@@ -49,3 +49,5 @@ jobs:
         run: node backend/licensing/license.test.js
       - name: Run tenant access tests
         run: node backend/licensing/tenant-access.test.js
+      - name: Run commercial license policy tests
+        run: node backend/licensing/license-policy.test.js
