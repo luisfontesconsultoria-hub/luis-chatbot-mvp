@@ -43,3 +43,5 @@ jobs:
         run: node backend/core/e2e-contract.test.js
       - name: Run acquisition attribution tests
         run: node backend/core/attribution.test.js
+      - name: Run HTTP server health test
+        run: node backend/server.test.js
