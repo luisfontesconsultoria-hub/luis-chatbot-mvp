@@ -18,6 +18,14 @@ function createSupabaseRepository(client) {
       if (error && error.code !== 'PGRST116') throw error;
       return data ? fromDbLead(data) : null;
     },
+    async findOrCreateLeadByPhone(phone, defaults = {}) {
+      if (!phone) throw new Error('PHONE_REQUIRED');
+      const normalized = String(phone).replace(/\D/g, '');
+      const { data: existing, error: findError } = await client.from(TABLES.leads).select('*').eq('phone', normalized).limit(1);
+      if (findError) throw findError;
+      if (existing && existing[0]) return fromDbLead(existing[0]);
+      return this.createLead({ phone: normalized, source: defaults.source || 'WHATSAPP' });
+    },
     async createLead(payload) {
       const { data, error } = await client.from(TABLES.leads).insert(toDbLead(payload)).select('*').single();
       if (error) throw error;
