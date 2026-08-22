@@ -1,11 +1,10 @@
-/**
- * V1 transactional pipeline. Provider-neutral orchestration boundary.
- * The caller injects repository and channel adapters.
- */
+/** V1 transactional inbound pipeline. Provider-neutral orchestration boundary. */
 const { processEvent } = require('./orchestrator');
 const { acquireEvent } = require('./idempotency');
+const { normalizeDecision, assertTransition } = require('./decision-contract');
+const { assertTransition: assertStateTransition } = require('./transition-guard');
 
-async function runInbound({ event, repository, channel, ai = null }) {
+async function runInbound({ event, repository, channel, ai = null, authorizedHumanRelease = false }) {
   if (!event || !event.externalMessageId || !event.phone) throw new Error('invalid_inbound_event');
 
   const acquired = await acquireEvent({ event, repository });
@@ -26,22 +25,43 @@ async function runInbound({ event, repository, channel, ai = null }) {
     metadata: event.metadata || {}
   });
 
-  const decision = processEvent({ lead, text: event.text || '', externalMessageId: event.externalMessageId });
-  let finalDecision = decision;
+  const rawDecision = processEvent({ lead, text: event.text || '', externalMessageId: event.externalMessageId, authorizedHumanRelease });
+  let decision = normalizeDecision(rawDecision);
 
-  if (decision.status !== 'AGUARDANDO_RETORNO_DO_LUIS' && ai && decision.reply === null) {
-    finalDecision = await ai.generate({ lead, text: event.text || '', decision });
+  if (decision.status !== 'AGUARDANDO_RETORNO_DO_LUIS' && decision.status !== 'HUMAN_HANDOFF' && ai && decision.reply === null) {
+    decision = normalizeDecision(await ai.generate({ lead, text: event.text || '', decision }));
   }
 
-  await repository.upsertLead({ id: lead.id, phone: lead.phone, status: finalDecision.status, next_action: finalDecision.handoff ? 'LUIS' : null });
-  await repository.saveAudit({ lead_id: lead.id, action: 'STATE_TRANSITION', from_status: lead.status, to_status: finalDecision.status, actor: 'SYSTEM' });
+  assertTransition(lead.status || 'NEW', { ...decision, authorizedHumanRelease });
+  assertStateTransition(lead.status || 'NEW', decision.status, authorizedHumanRelease);
 
-  if (finalDecision.reply) {
-    await channel.sendText({ phone: event.phone, text: finalDecision.reply });
-    await repository.saveMessage({ lead_id: lead.id, channel: event.channel || 'WHATSAPP', direction: 'OUTBOUND', text_content: finalDecision.reply, metadata: { generated_by: 'SDR' } });
+  await repository.upsertLead({
+    id: lead.id,
+    phone: lead.phone,
+    status: decision.status,
+    next_action: decision.nextAction,
+    updated_at: new Date().toISOString()
+  });
+  await repository.saveAudit({
+    lead_id: lead.id,
+    action: 'STATE_TRANSITION',
+    from_status: lead.status || 'NEW',
+    to_status: decision.status,
+    actor: authorizedHumanRelease ? 'LUIS' : 'SYSTEM'
+  });
+
+  if (decision.reply) {
+    await channel.sendText({ phone: event.phone, text: decision.reply });
+    await repository.saveMessage({
+      lead_id: lead.id,
+      channel: event.channel || 'WHATSAPP',
+      direction: 'OUTBOUND',
+      text_content: decision.reply,
+      metadata: { generated_by: ai && rawDecision.reply === null ? 'AI' : 'SDR' }
+    });
   }
 
-  return { ok: true, duplicate: false, leadId: lead.id, status: finalDecision.status, handoff: Boolean(finalDecision.handoff), replySent: Boolean(finalDecision.reply) };
+  return { ok: true, duplicate: false, leadId: lead.id, status: decision.status, handoff: decision.handoff, replySent: Boolean(decision.reply) };
 }
 
 module.exports = { runInbound };
