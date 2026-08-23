@@ -1,10 +1,32 @@
 /**
- * Local guard prevents duplicate work inside one process.
- * Production durability is enforced by the events.idempotency_key unique constraint;
- * the webhook pipeline treats database uniqueness conflicts as duplicates.
+ * Bounded local guard. Durable idempotency is still enforced by the DB unique key.
+ * The bounded cache prevents unbounded memory growth on long-running instances.
  */
-function createIdempotencyGuard() {
-  const seen = new Set();
-  return { has(key){ return seen.has(String(key)); }, mark(key){ const k=String(key); if(seen.has(k)) return false; seen.add(k); return true; } };
+function createIdempotencyGuard({ maxEntries = 5000, ttlMs = 10 * 60 * 1000 } = {}) {
+  const seen = new Map();
+  function prune(now = Date.now()) {
+    for (const [key, timestamp] of seen) {
+      if (now - timestamp > ttlMs) seen.delete(key);
+      else break;
+    }
+    while (seen.size > maxEntries) seen.delete(seen.keys().next().value);
+  }
+  return {
+    has(key) {
+      const k = String(key);
+      const timestamp = seen.get(k);
+      if (!timestamp) return false;
+      if (Date.now() - timestamp > ttlMs) { seen.delete(k); return false; }
+      return true;
+    },
+    mark(key) {
+      const k = String(key);
+      if (this.has(k)) return false;
+      seen.set(k, Date.now());
+      prune();
+      return true;
+    },
+    clear() { seen.clear(); }
+  };
 }
 module.exports = { createIdempotencyGuard };
