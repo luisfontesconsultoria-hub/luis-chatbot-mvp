@@ -3,7 +3,7 @@ services:
     name: luis-chatbot-mvp
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -12,7 +12,7 @@ services:
         value: production
       - key: SUPABASE_URL
         sync: false
-      - key: SUPABASE_SECRET_KEY
+      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: OPENAI_API_KEY
         sync: false
@@ -25,4 +25,6 @@ services:
       - key: META_PHONE_NUMBER_ID
         sync: false
       - key: META_GRAPH_API_VERSION
-        sync: false
+        value: v20.0
+      - key: AI_ASSIST_ENABLED
+        value: "false"
