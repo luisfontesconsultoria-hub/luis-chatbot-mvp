@@ -29,9 +29,10 @@ const accountMachineTogether = /conta.{0,80}(maquina|máquina)|(?:maquina|máqui
 
 function nextStep(lead = {}, text = '', authorizedHumanRelease = false) {
   const q = normalize(text);
-  const state = lead.status || 'NEW';
+  // Backward-compatible normalization for the legacy Portuguese status used by an earlier schema.
+  const rawState = lead.status || 'NEW';
+  const state = rawState === 'NOVO' ? 'NEW' : rawState;
 
-  // Critical safety boundary: customer messages can never release this state.
   if (state === BLOCKED && !authorizedHumanRelease) {
     return { reply: 'Recebi sua mensagem. Seu atendimento está aguardando o retorno do Luís. Assim que ele retornar, continuamos por aqui.', status: BLOCKED, handoff: true };
   }
@@ -44,7 +45,8 @@ function nextStep(lead = {}, text = '', authorizedHumanRelease = false) {
   }
 
   if (state === 'IDENTIFYING') {
-    return { reply: `Prazer, ${text}! O que você está procurando hoje para sua empresa?`, status: 'QUALIFYING', handoff: false };
+    const safeName = String(text).trim().slice(0, 80);
+    return { reply: `Prazer, ${safeName || 'tudo bem'}! O que você está procurando hoje para sua empresa?`, status: 'QUALIFYING', handoff: false };
   }
 
   if (state === 'QUALIFYING') {
@@ -80,7 +82,8 @@ function nextStep(lead = {}, text = '', authorizedHumanRelease = false) {
   }
 
   if (state === 'SCHEDULING') {
-    return { reply: 'Perfeito. Registrei sua preferência de dia e horário. Vou confirmar o agendamento.', status: 'CONFIRMED', handoff: false };
+    // V1 must never claim a meeting is confirmed without a real calendar confirmation.
+    return { reply: 'Perfeito. Anotei sua preferência de dia e horário. Vou confirmar o agendamento com você.', status: 'SCHEDULING', handoff: true };
   }
 
   if (state === 'CNPJ_PENDING') {
