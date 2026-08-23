@@ -35,8 +35,19 @@ function normalizeMetaWebhook(payload = {}) {
   return messages;
 }
 
-function routeRequest({ method, path, query={}, body={}, rawBody='', signatureHeader='' } = {}) {
+async function databaseHealth() {
+  if (!runtime.repository) return { status:503, body:{ status:'error', database:'not_configured' } };
+  try {
+    await runtime.repository.listLeads({ limit:1 });
+    return { status:200, body:{ status:'ok', database:'ok' } };
+  } catch {
+    return { status:503, body:{ status:'error', database:'unavailable' } };
+  }
+}
+
+async function routeRequest({ method, path, query={}, body={}, rawBody='', signatureHeader='' } = {}) {
   if (method==='GET' && path==='/health') return { status:200, body:healthResponse() };
+  if (method==='GET' && path==='/health/db') return databaseHealth();
   if (method==='GET' && path==='/webhooks/meta') return verifyMetaWebhook(query);
 
   if (method==='POST' && path==='/webhooks/meta') {
@@ -46,8 +57,6 @@ function routeRequest({ method, path, query={}, body={}, rawBody='', signatureHe
     const messages=normalizeMetaWebhook(body);
     if (!runtime.pipeline) return { status:503, body:{ error:'PERSISTENCE_NOT_CONFIGURED' } };
 
-    // Acknowledge Meta only after accepting the payload for processing.
-    // Processing is isolated from the HTTP response so Meta does not wait for CRM work.
     if (messages.length) runtime.pipeline(messages).catch(() => {});
     return { status:200, body:{ received:true, count:messages.length } };
   }
@@ -56,4 +65,4 @@ function routeRequest({ method, path, query={}, body={}, rawBody='', signatureHe
   return { status:404, body:{ error:'NOT_FOUND' } };
 }
 
-module.exports={ routeRequest, normalizeMetaWebhook, verifyMetaWebhook };
+module.exports={ routeRequest, normalizeMetaWebhook, verifyMetaWebhook, databaseHealth };
