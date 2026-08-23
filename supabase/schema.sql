@@ -6,9 +6,18 @@ create table if not exists public.leads (
   company_name text, cnpj text, source text not null default 'WHATSAPP', campaign text,
   product_interest text, bank_current text, machine_current text, monthly_revenue numeric,
   pain_point text, status text not null default 'NEW', owner text default 'LUIS',
-  next_action text, consent_at timestamptz, created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(), unique(phone), unique(cnpj)
+  next_action text, consent_at timestamptz, address text, city text, state text, zip_code text,
+  latitude double precision, longitude double precision, location_source text,
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(), unique(phone), unique(cnpj)
 );
+alter table public.leads add column if not exists address text;
+alter table public.leads add column if not exists city text;
+alter table public.leads add column if not exists state text;
+alter table public.leads add column if not exists zip_code text;
+alter table public.leads add column if not exists latitude double precision;
+alter table public.leads add column if not exists longitude double precision;
+alter table public.leads add column if not exists location_source text;
+
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(), lead_id uuid not null references public.leads(id) on delete cascade,
   channel text not null default 'WHATSAPP', direction text not null, external_message_id text,
@@ -27,6 +36,7 @@ create table if not exists public.audit_log (
 );
 create index if not exists leads_status_idx on public.leads(status);
 create index if not exists leads_source_idx on public.leads(source);
+create index if not exists leads_city_state_idx on public.leads(city,state);
 create index if not exists messages_lead_created_idx on public.messages(lead_id, created_at desc);
 create index if not exists events_lead_created_idx on public.events(lead_id, created_at desc);
 
