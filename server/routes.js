@@ -1,6 +1,9 @@
 /** Production route contract. */
 const { healthResponse } = require('./health');
 const { verifyMetaSignature } = require('./security/meta-signature');
+const { createProductionRuntime } = require('./runtime');
+
+const runtime = createProductionRuntime();
 
 function verifyMetaWebhook(query = {}) {
   const mode = query['hub.mode'];
@@ -22,6 +25,7 @@ function routeRequest({ method, path, query={}, body={}, rawBody='', signatureHe
   if (method==='POST' && path==='/webhooks/meta') {
     const secret=process.env.META_APP_SECRET;
     if (!secret || !verifyMetaSignature(rawBody, signatureHeader, secret)) return { status:401, body:{ error:'META_SIGNATURE_INVALID' } };
+    if (!runtime.pipeline) return { status:503, body:{ error:'PERSISTENCE_NOT_CONFIGURED' } };
     return { status:200, body:{ received:true, messages:normalizeMetaWebhook(body) } };
   }
   if (path.startsWith('/api/crm')) return { status:401, body:{ error:'CRM_AUTH_REQUIRED' } };
