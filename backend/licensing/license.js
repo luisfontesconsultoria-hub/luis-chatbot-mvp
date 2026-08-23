@@ -13,7 +13,11 @@ function signLicense(payload, secret) {
 function verifyLicense(license, secret, now = Date.now()) {
   if (!license || !secret || !license.tenantId || !license.signature) return { valid: false, reason: 'INVALID_LICENSE' };
   const expected = signLicense(license, secret);
-  const signatureOk = crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(license.signature));
+  const provided = String(license.signature).trim();
+  if (!/^[0-9a-f]{64}$/i.test(provided)) return { valid: false, reason: 'INVALID_SIGNATURE' };
+  const expectedBuffer = Buffer.from(expected, 'hex');
+  const providedBuffer = Buffer.from(provided, 'hex');
+  const signatureOk = expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
   if (!signatureOk) return { valid: false, reason: 'INVALID_SIGNATURE' };
   if (license.status !== 'ACTIVE') return { valid: false, reason: 'LICENSE_INACTIVE' };
   if (!Number.isFinite(Date.parse(license.expiresAt)) || Date.parse(license.expiresAt) <= now) return { valid: false, reason: 'LICENSE_EXPIRED' };
