@@ -1,0 +1,1 @@
+const qr=require('./qr-manager');function createQrManager({repository}={}){return{list:()=>qr.list(),status:s=>qr.status(s),connect:s=>qr.connect(s,{repository}),disconnect:s=>qr.disconnect(s),send:(s,p)=>qr.send(s,p)}}module.exports={createQrManager};
