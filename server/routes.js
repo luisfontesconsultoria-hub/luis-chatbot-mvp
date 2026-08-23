@@ -25,8 +25,11 @@ function routeRequest({ method, path, query={}, body={}, rawBody='', signatureHe
   if (method==='POST' && path==='/webhooks/meta') {
     const secret=process.env.META_APP_SECRET;
     if (!secret || !verifyMetaSignature(rawBody, signatureHeader, secret)) return { status:401, body:{ error:'META_SIGNATURE_INVALID' } };
-    if (!runtime.pipeline) return { status:503, body:{ error:'PERSISTENCE_NOT_CONFIGURED' } };
-    return { status:200, body:{ received:true, messages:normalizeMetaWebhook(body) } };
+    const messages=normalizeMetaWebhook(body);
+    if (runtime.pipeline && messages.length) {
+      runtime.pipeline(messages).catch(() => {});
+    }
+    return { status:200, body:{ received:true, messages } };
   }
   if (path.startsWith('/api/crm')) return { status:401, body:{ error:'CRM_AUTH_REQUIRED' } };
   return { status:404, body:{ error:'NOT_FOUND' } };
