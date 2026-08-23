@@ -6,6 +6,8 @@ function firstEnv(env, names, fallback = undefined) {
 }
 
 function getConfig(env = process.env) {
+  const aiConfigured = Boolean(env.OPENAI_API_KEY);
+  const aiFlag = String(env.AI_ASSIST_ENABLED ?? (aiConfigured ? 'true' : 'false')).toLowerCase();
   return Object.freeze({
     nodeEnv: env.NODE_ENV || 'production',
     port: Number(env.PORT || 10000),
@@ -18,7 +20,7 @@ function getConfig(env = process.env) {
     metaGraphApiVersion: firstEnv(env, ['WHATSAPP_GRAPH_API_VERSION', 'META_GRAPH_API_VERSION'], 'v20.0'),
     openAiApiKey: env.OPENAI_API_KEY || null,
     openAiModel: env.OPENAI_MODEL || 'gpt-5.6-luna',
-    aiAssistEnabled: String(env.AI_ASSIST_ENABLED || 'false').toLowerCase() === 'true'
+    aiAssistEnabled: aiFlag === 'true'
   });
 }
 
