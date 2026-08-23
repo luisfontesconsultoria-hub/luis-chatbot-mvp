@@ -1,6 +1,6 @@
 {
   "name":"luis-chatbot-mvp",
-  "version":"1.0.0-v1",
+  "version":"1.1.0-crm-v1",
   "private":true,
   "description":"Backend V1 para SDR, CRM e WhatsApp",
   "main":"server/http.js",
@@ -9,5 +9,10 @@
     "test":"node server/health.test.js && node server/security/idempotency.test.js && node server/config.test.js && node server/production-sdr.test.js && node backend/persistence/crm-mapper.test.js && node backend/persistence/supabase-integration.test.js && node server/e2e-contract.test.js && node server/v1-contracts.test.js && node server/production-config.test.js && node server/supabase-runtime.test.js"
   },
   "engines":{"node":">=20"},
-  "dependencies":{"@supabase/supabase-js":"^2.57.0"}
+  "dependencies":{
+    "@hapi/boom":"^10.0.1",
+    "@supabase/supabase-js":"^2.57.0",
+    "@whiskeysockets/baileys":"^6.7.20",
+    "qrcode":"^1.5.4"
+  }
 }
