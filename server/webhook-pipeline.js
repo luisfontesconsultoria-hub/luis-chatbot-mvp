@@ -19,7 +19,8 @@ function createWebhookPipeline({ repository, idempotency = createIdempotencyGuar
       }
 
       const key = message.external_message_id || `${message.phone}:${message.timestamp}:${message.text || ''}`;
-      if (!idempotency.mark(key)) {
+      // Local cache is only a fast path. The database unique constraint is authoritative.
+      if (idempotency.has(key)) {
         results.push({ status:'duplicate', key });
         continue;
       }
@@ -27,7 +28,6 @@ function createWebhookPipeline({ repository, idempotency = createIdempotencyGuar
       try {
         const lead = await repository.findOrCreateLeadByPhone(message.phone, { source: message.source || 'WHATSAPP' });
 
-        // Durable idempotency: the database constraint on events is the final guard.
         try {
           await repository.createEvent({
             lead_id: lead.id,
@@ -35,8 +35,11 @@ function createWebhookPipeline({ repository, idempotency = createIdempotencyGuar
             idempotency_key:key,
             payload:{ external_message_id:key, type:message.type || 'text', timestamp:message.timestamp || null }
           });
+          // Only cache after durable acquisition succeeds. Failed processing can be retried.
+          idempotency.mark(key);
         } catch (error) {
           if (isDuplicateError(error)) {
+            idempotency.mark(key);
             results.push({ status:'duplicate', key, lead_id:lead.id });
             continue;
           }
@@ -61,7 +64,6 @@ function createWebhookPipeline({ repository, idempotency = createIdempotencyGuar
             }
           });
         } catch (error) {
-          // A unique message id means the event was already persisted previously.
           if (!isDuplicateError(error)) throw error;
           results.push({ status:'duplicate', key, lead_id:lead.id });
           continue;
