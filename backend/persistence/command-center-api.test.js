@@ -1,0 +1,2 @@
+const assert=require('assert');const{getCommandCenterResponse}=require('./command-center-api');
+(async()=>{const repo={async listEvents(){return[{id:'e1',lead_id:'l1',type:'FOLLOW_UP_SCHEDULED',payload:{dueAt:'2026-08-24T14:00:00-03:00',action:'FAZER_FOLLOW_UP',leadPriority:'HIGH'}}]}};const x=await getCommandCenterResponse(repo,{now:Date.parse('2026-08-24T10:00:00-03:00')});assert.equal(x.tasks.length,1);assert.equal(x.tasks[0].leadId,'l1');console.log('command-center-api.test.js: ok')})().catch(e=>{console.error(e);process.exit(1)});
