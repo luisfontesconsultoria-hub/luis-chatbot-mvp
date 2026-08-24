@@ -1,36 +1,34 @@
-/** Server-side Supabase adapter. Existing V1 tables remain the source of truth. */
+/** Server-side Supabase adapter. The existing V1 production schema remains the source of truth. */
 const { TABLES, assertRepository } = require('./supabase-contract');
 const { toDbLead, fromDbLead } = require('./crm-mapper');
-function schemaMismatch(error){const code=String(error?.code||'');const msg=String(error?.message||'').toLowerCase();return ['PGRST204','42703','42P01'].includes(code)||msg.includes('could not find the')||msg.includes('column')&&msg.includes('does not exist')}
 function cleanRow(row={}){const out={};for(const [k,v] of Object.entries(row)){if(v===undefined||v===null)continue;if(typeof v==='string'&&v.trim()==='')continue;out[k]=v}return out}
-function baseLeadRow(row){const allowed=['name','phone','company_name','cnpj','source','campaign','product_interest','status','owner','next_action','consent_at'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
-function optionalLeadRow(row){const allowed=['bank_current','machine_current','monthly_revenue','pain_point','address','city','state','zip_code','latitude','longitude','location_source'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
+function baseLeadRow(row){const allowed=['nome','nome_da_empresa','telefone','cnpj','fonte','campanha','interesse_no_produto','corrente_bancaria','corrente_da_maquina','receita_mensal','ponto_de_dor','status','owner','próxima_ação'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
+function optionalLeadRow(row){const allowed=['atualizado_em','status_da_empresa','nome_comercial','vizinhança','número_do_endereço'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
 function createSupabaseRepository(client) {
   if (!client || typeof client.from !== 'function') throw new Error('SUPABASE_CLIENT_REQUIRED');
   return assertRepository({
-    async listLeads({limit=50,source,status}={}){let q=client.from(TABLES.leads).select('*').limit(limit);if(source)q=q.eq('source',source);if(status)q=q.eq('status',status);const{data,error}=await q;if(error)throw error;return(data||[]).map(fromDbLead)},
+    async listLeads({limit=50,source,status}={}){let q=client.from(TABLES.leads).select('*').limit(limit);if(source)q=q.eq('fonte',source);if(status)q=q.eq('status',status);const{data,error}=await q;if(error)throw error;return(data||[]).map(fromDbLead)},
     async getLead(id){const{data,error}=await client.from(TABLES.leads).select('*').eq('id',id).single();if(error&&error.code!=='PGRST116')throw error;return data?fromDbLead(data):null},
-    async findOrCreateLeadByPhone(phone,defaults={}){if(!phone)throw new Error('PHONE_REQUIRED');const normalized=String(phone).replace(/\D/g,'');const{data:existing,error}=await client.from(TABLES.leads).select('*').eq('phone',normalized).limit(1);if(error)throw error;if(existing&&existing[0])return fromDbLead(existing[0]);return this.createLead({phone:normalized,source:defaults.source||'WHATSAPP'})},
+    async findOrCreateLeadByPhone(phone,defaults={}){if(!phone)throw new Error('PHONE_REQUIRED');const normalized=String(phone).replace(/\D/g,'');const{data:existing,error}=await client.from(TABLES.leads).select('*').eq('telefone',normalized).limit(1);if(error)throw error;if(existing&&existing[0])return fromDbLead(existing[0]);return this.createLead({phone:normalized,source:defaults.source||'WHATSAPP'})},
     async createLead(payload){
       const row=cleanRow(toDbLead(payload));
       const full=await client.from(TABLES.leads).insert(row).select('*').single();
       if(!full.error)return fromDbLead(full.data);
       if(full.error.code==='23505'){
-        const phone=row.phone?String(row.phone).replace(/\D/g,''):'';const cnpj=row.cnpj?String(row.cnpj).replace(/\D/g,''):'';let existing=null;
-        if(phone){const r=await client.from(TABLES.leads).select('*').eq('phone',phone).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
+        const phone=row.telefone?String(row.telefone).replace(/\D/g,''):'';const cnpj=row.cnpj?String(row.cnpj).replace(/\D/g,''):'';let existing=null;
+        if(phone){const r=await client.from(TABLES.leads).select('*').eq('telefone',phone).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
         if(!existing&&cnpj){const r=await client.from(TABLES.leads).select('*').eq('cnpj',cnpj).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
         if(existing)return fromDbLead(existing);
       }
       const base=baseLeadRow(row);
       const retry=await client.from(TABLES.leads).insert(base).select('*').single();
       if(!retry.error){
-        const lead=fromDbLead(retry.data);const optional=optionalLeadRow(row);
-        if(Object.keys(optional).length){try{const updated=await client.from(TABLES.leads).update(optional).eq('id',retry.data.id).select('*').single();if(!updated.error)return fromDbLead(updated.data)}catch{}}
-        return lead;
+        const optional=optionalLeadRow(row);if(Object.keys(optional).length){try{const updated=await client.from(TABLES.leads).update(optional).eq('id',retry.data.id).select('*').single();if(!updated.error)return fromDbLead(updated.data)}catch{}}
+        return fromDbLead(retry.data);
       }
       if(retry.error?.code==='23505'){
-        const phone=base.phone?String(base.phone).replace(/\D/g,''):'';const cnpj=base.cnpj?String(base.cnpj).replace(/\D/g,''):'';let existing=null;
-        if(phone){const r=await client.from(TABLES.leads).select('*').eq('phone',phone).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
+        const phone=base.telefone?String(base.telefone).replace(/\D/g,''):'';const cnpj=base.cnpj?String(base.cnpj).replace(/\D/g,''):'';let existing=null;
+        if(phone){const r=await client.from(TABLES.leads).select('*').eq('telefone',phone).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
         if(!existing&&cnpj){const r=await client.from(TABLES.leads).select('*').eq('cnpj',cnpj).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
         if(existing)return fromDbLead(existing);
       }
