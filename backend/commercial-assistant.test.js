@@ -3,6 +3,6 @@ assert(scoreLead({status:'NEW',cnpj:'123',companyName:'Empresa'})>20);assert.str
 assert.deepStrictEqual(rankAppointmentSlots([{startMinutes:900,travelMinutes:20},{startMinutes:800,travelMinutes:5},{startMinutes:600,travelMinutes:1}],{startMinutes:700,endMinutes:1000}).map(x=>x.startMinutes),[800,900]);
 assert.deepStrictEqual(rankAppointmentSlots([{startMinutes:600}],{startMinutes:1000,endMinutes:900}),[]);
 assert.deepStrictEqual(routeOrder([{id:'A',priority:50,travelMinutes:20},{id:'B',priority:90,travelMinutes:60}]).map(x=>x.id),['B','A']);
-assert.strictEqual(buildRoutePlan([{id:'A',priority:1}]).optimization,'priority_only');
-assert.strictEqual(buildRoutePlan([{id:'A',priority:1,travelMinutes:10}]).optimization,'priority_then_travel_time');
+const plan=buildRoutePlan([{id:'A',priority:50,travelMinutes:20},{id:'B',priority:90,travelMinutes:60}],{date:'2026-08-25',startAt:'09:00',origin:'Porto Alegre'});assert.equal(plan.count,2);assert.equal(plan.optimization,'priority_then_travel_time');assert.equal(plan.hasRealTravelData,true);assert.equal(plan.stops[0].id,'B');
+const fallback=buildRoutePlan([{id:'A',priority:50},{id:'B',priority:90}],{});assert.equal(fallback.optimization,'priority_only');assert.equal(fallback.hasRealTravelData,false);
 console.log('commercial-assistant.test.js: ok');
