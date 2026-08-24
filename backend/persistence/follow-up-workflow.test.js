@@ -1,0 +1,2 @@
+const assert=require('assert');const{normalizeFollowUp}=require('./follow-up-workflow');
+const x=normalizeFollowUp({dueAt:'2026-08-25T14:00:00-03:00',note:'Retornar sobre proposta',channel:'WHATSAPP'});assert.equal(x.status,'PENDING');assert.equal(x.channel,'WHATSAPP');assert.equal(x.note,'Retornar sobre proposta');assert.throws(()=>normalizeFollowUp({note:'sem data'}),/FOLLOW_UP_DATE_REQUIRED/);assert.throws(()=>normalizeFollowUp({dueAt:'invalid'}),/FOLLOW_UP_DATE_INVALID/);console.log('follow-up-workflow.test.js: ok');
