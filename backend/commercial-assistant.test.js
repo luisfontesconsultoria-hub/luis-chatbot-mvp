@@ -1,8 +1,10 @@
-const assert=require('assert');const{scoreLead,priority,rankAppointmentSlots,routeOrder,buildRoutePlan}=require('./commercial-assistant');
+const assert=require('assert');const{scoreLead,priority,rankAppointmentSlots,routeOrder,buildRoutePlan,appointmentToPipelineStatus,visitResultToStatus}=require('./commercial-assistant');
 assert(scoreLead({status:'NEW',cnpj:'123',companyName:'Empresa'})>20);assert.strictEqual(priority(95),'HIGH');assert.strictEqual(priority(70),'MEDIUM');assert.strictEqual(priority(40),'LOW');
 assert.deepStrictEqual(rankAppointmentSlots([{startMinutes:900,travelMinutes:20},{startMinutes:800,travelMinutes:5},{startMinutes:600,travelMinutes:1}],{startMinutes:700,endMinutes:1000}).map(x=>x.startMinutes),[800,900]);
 assert.deepStrictEqual(rankAppointmentSlots([{startMinutes:600}],{startMinutes:1000,endMinutes:900}),[]);
 assert.deepStrictEqual(routeOrder([{id:'A',priority:50,travelMinutes:20},{id:'B',priority:90,travelMinutes:60}]).map(x=>x.id),['B','A']);
 const plan=buildRoutePlan([{id:'A',priority:50,travelMinutes:20},{id:'B',priority:90,travelMinutes:60}],{date:'2026-08-25',startAt:'09:00',origin:'Porto Alegre'});assert.equal(plan.count,2);assert.equal(plan.optimization,'priority_then_travel_time');assert.equal(plan.hasRealTravelData,true);assert.equal(plan.stops[0].id,'B');
 const fallback=buildRoutePlan([{id:'A',priority:50},{id:'B',priority:90}],{});assert.equal(fallback.optimization,'priority_only');assert.equal(fallback.hasRealTravelData,false);
+assert.equal(appointmentToPipelineStatus({confirmed:false}),'SCHEDULING');assert.equal(appointmentToPipelineStatus({confirmed:true,mode:'PRESENCIAL'}),'MEETING_MODE');assert.equal(appointmentToPipelineStatus({confirmed:true,mode:'REMOTO'}),'CONFIRMED');
+assert.equal(visitResultToStatus('CONVERTED'),'CONVERTIDO');assert.equal(visitResultToStatus('SEM_INTERESSE'),'PERDIDO');assert.equal(visitResultToStatus('FOLLOW_UP'),'AGUARDANDO_RETORNO');assert.equal(visitResultToStatus('OUTRO'),null);
 console.log('commercial-assistant.test.js: ok');
