@@ -1,11 +1,11 @@
-/** Maps the CRM model to the existing V1 Supabase lead schema. */
+/** Maps the CRM model to the existing V1 Supabase lead schema. Company cadastral status is stored as an event until the database migration is applied. */
 const LEAD_TO_DB = Object.freeze({
   id:'id', name:'name', companyName:'company_name', phone:'phone', cnpj:'cnpj',
   source:'source', campaign:'campaign', interest:'product_interest',
   bankCurrent:'bank_current', machineCurrent:'machine_current', monthlyRevenue:'monthly_revenue',
   painPoint:'pain_point', status:'status', owner:'owner', nextAction:'next_action',
   consentAt:'consent_at', address:'address', city:'city', state:'state', zipCode:'zip_code',
-  latitude:'latitude', longitude:'longitude', locationSource:'location_source', companyStatus:'company_status',
+  latitude:'latitude', longitude:'longitude', locationSource:'location_source',
   createdAt:'created_at', updatedAt:'updated_at'
 });
 function toDbLead(input = {}) { const out={}; for(const [from,to] of Object.entries(LEAD_TO_DB)) if(input[from]!==undefined) out[to]=input[from]; return out; }
