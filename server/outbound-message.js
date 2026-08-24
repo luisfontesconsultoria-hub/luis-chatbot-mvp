@@ -11,14 +11,14 @@ function createOutboundMessageHandler({ repository, sender }) {
       direction: 'OUTBOUND',
       external_message_id: providerMessageId,
       text_content: text,
-      metadata: { provider: 'META_WHATSAPP' }
+      metadata: { provider: sender.provider || 'META_WHATSAPP' }
     });
     if (typeof repository.createEvent === 'function') {
       await repository.createEvent({
         lead_id: lead.id,
         type: 'WHATSAPP_RESPONSE_SENT',
         idempotency_key: providerMessageId ? `WHATSAPP_RESPONSE_SENT:${providerMessageId}` : null,
-        payload: { external_message_id: providerMessageId }
+        payload: { external_message_id: providerMessageId, provider: sender.provider || 'META_WHATSAPP' }
       });
     }
     return { sent:true, response, saved };
