@@ -1,4 +1,4 @@
-/** Maps the CRM model to the actual V1 Supabase lead schema. */
+/** Maps the CRM model to the existing V1 Supabase lead schema. */
 const LEAD_TO_DB = Object.freeze({
   id:'id', name:'name', companyName:'company_name', phone:'phone', cnpj:'cnpj',
   source:'source', campaign:'campaign', interest:'product_interest',
