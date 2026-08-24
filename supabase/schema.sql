@@ -7,7 +7,7 @@ create table if not exists public.leads (
   product_interest text, bank_current text, machine_current text, monthly_revenue numeric,
   pain_point text, status text not null default 'NEW', owner text default 'LUIS',
   next_action text, consent_at timestamptz, address text, city text, state text, zip_code text,
-  latitude double precision, longitude double precision, location_source text,
+  latitude double precision, longitude double precision, location_source text, company_status text,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(), unique(phone), unique(cnpj)
 );
 alter table public.leads add column if not exists address text;
@@ -17,6 +17,7 @@ alter table public.leads add column if not exists zip_code text;
 alter table public.leads add column if not exists latitude double precision;
 alter table public.leads add column if not exists longitude double precision;
 alter table public.leads add column if not exists location_source text;
+alter table public.leads add column if not exists company_status text;
 
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(), lead_id uuid not null references public.leads(id) on delete cascade,
