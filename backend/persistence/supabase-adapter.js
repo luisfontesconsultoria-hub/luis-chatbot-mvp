@@ -2,7 +2,7 @@
 const { TABLES, assertRepository } = require('./supabase-contract');
 const { toDbLead, fromDbLead } = require('./crm-mapper');
 function cleanRow(row={}){const out={};for(const [k,v] of Object.entries(row)){if(v===undefined||v===null)continue;if(typeof v==='string'&&v.trim()==='')continue;out[k]=v}return out}
-function baseLeadRow(row){const allowed=['nome','nome_da_empresa','telefone','cnpj','fonte','campanha','interesse_no_produto','corrente_bancaria','corrente_da_maquina','receita_mensal','ponto_de_dor','status','owner','próxima_ação'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
+function baseLeadRow(row){const allowed=['nome','nome_da_empresa','telefone','cnpj','fonte','campanha','interesse_no_produto','corrente_bancaria','corrente_da_maquina','receita_mensal','ponto_de_dor','status','owner','próxima_ação','address','city','state','zip_code'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
 function optionalLeadRow(row){const allowed=['atualizado_em','status_da_empresa','nome_comercial','vizinhança','número_do_endereço'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
 function createSupabaseRepository(client) {
   if (!client || typeof client.from !== 'function') throw new Error('SUPABASE_CLIENT_REQUIRED');
