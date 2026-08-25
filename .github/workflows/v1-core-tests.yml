@@ -14,7 +14,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # package-lock.json is intentionally kept compatible with the
+      # production npm-install build while dependencies are being normalized.
+      # npm ci is strict about lockfile/package.json parity and was blocking
+      # the entire regression suite before any test could execute.
+      - run: npm install --no-audit --no-fund
       - name: Run SDR regression tests
         run: node backend/core/pipeline.test.js
       - name: Run decision contract tests
