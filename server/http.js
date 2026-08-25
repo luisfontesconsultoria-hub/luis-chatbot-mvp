@@ -10,7 +10,6 @@ const server = http.createServer((req, res) => {
   let tooLarge = false;
 
   req.setTimeout(15000, () => req.destroy());
-
   req.on('data', chunk => {
     size += chunk.length;
     if (size > MAX_BODY_BYTES) {
@@ -51,36 +50,28 @@ const server = http.createServer((req, res) => {
       });
 
       res.statusCode = result.status;
-      res.setHeader(
-        'Content-Type',
-        result.contentType || (result.text ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8')
-      );
+      res.setHeader('Content-Type', result.contentType || (result.text ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8'));
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
 
-      let responseBody = result.raw
-        ? result.body
-        : (result.text ? String(result.body) : JSON.stringify(result.body));
+      let responseBody = result.raw ? result.body : (result.text ? String(result.body) : JSON.stringify(result.body));
 
+      // Do not inject another login handler here. public/app.js owns the login flow.
+      // The server only restores an already authenticated client session.
       if (result.raw && String(result.contentType || '').startsWith('text/html')) {
-        const html = Buffer.isBuffer(responseBody)
-          ? responseBody.toString('utf8')
-          : String(responseBody);
-        const bootstrap = `<script>(function(){try{if(typeof nav==='function')nav();var f=document.getElementById('login-form');if(f&&!f.dataset.crmGuard){f.dataset.crmGuard='1';f.addEventListener('submit',function(e){e.preventDefault();e.stopImmediatePropagation();if(typeof doLogin==='function')doLogin(e)},true)}if(typeof state!=='undefined'&&state.token&&typeof showApp==='function'){showApp();if(typeof load==='function')load()}}catch(e){console.error('CRM_BOOTSTRAP_FAILED',e)}})();</script>`;
+        const html = Buffer.isBuffer(responseBody) ? responseBody.toString('utf8') : String(responseBody);
+        const bootstrap = `<script>(function(){try{if(typeof nav==='function')nav();if(typeof state!=='undefined'&&state.token&&typeof showApp==='function'){showApp();if(typeof load==='function')load()}}catch(e){console.error('CRM_BOOTSTRAP_FAILED',e)}})();</script>`;
         responseBody = html.replace('</body>', bootstrap + '</body>');
       }
 
       res.end(responseBody);
     } catch (error) {
-      const code = String(error?.code || 'UNKNOWN_ERROR');
-      const message = String(error?.message || 'INTERNAL_SERVER_ERROR');
       console.error(JSON.stringify({
         event: 'HTTP_HANDLER_ERROR',
         method: req.method,
         path: url.pathname,
-        code,
-        message,
-        stack: error?.stack?.split('\n').slice(0, 6).join('\n')
+        code: String(error?.code || 'UNKNOWN_ERROR'),
+        message: String(error?.message || 'INTERNAL_SERVER_ERROR')
       }));
       res.statusCode = 500;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -93,8 +84,6 @@ const server = http.createServer((req, res) => {
   });
 });
 
-if (require.main === module) {
-  server.listen(PORT, '0.0.0.0');
-}
+if (require.main === module) server.listen(PORT, '0.0.0.0');
 
 module.exports = { server };
