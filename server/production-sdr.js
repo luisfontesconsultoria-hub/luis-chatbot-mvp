@@ -44,7 +44,7 @@ function createProductionSdrGateway({ repository, sender, env = process.env } = 
       });
 
       if (finalDecision.reply && finalDecision.status !== HUMAN) {
-        await outbound.send({ lead, text: finalDecision.reply });
+        await outbound({ lead, text: finalDecision.reply });
       }
 
       return {
