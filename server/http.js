@@ -66,7 +66,7 @@ const server = http.createServer((req, res) => {
         const html = Buffer.isBuffer(responseBody)
           ? responseBody.toString('utf8')
           : String(responseBody);
-        const bootstrap = `<script>(function(){try{var l=document.getElementById('login'),a=document.getElementById('app-shell');if(l&&a&&l.hidden&&a.hidden){if(typeof nav==='function')nav();if(typeof state!=='undefined'&&state.token&&typeof showApp==='function'){showApp();if(typeof load==='function')load()}else if(typeof showLogin==='function'){showLogin()}else{l.hidden=false}}}catch(e){console.error('CRM_BOOTSTRAP_FAILED',e);var x=document.getElementById('login');if(x)x.hidden=false}})();</script>`;
+        const bootstrap = `<script>(function(){try{if(typeof nav==='function')nav();var f=document.getElementById('login-form');if(f&&!f.dataset.crmGuard){f.dataset.crmGuard='1';f.addEventListener('submit',function(e){e.preventDefault();e.stopImmediatePropagation();if(typeof doLogin==='function')doLogin(e)},true)}if(typeof state!=='undefined'&&state.token&&typeof showApp==='function'){showApp();if(typeof load==='function')load()}}catch(e){console.error('CRM_BOOTSTRAP_FAILED',e)}})();</script>`;
         responseBody = html.replace('</body>', bootstrap + '</body>');
       }
 
