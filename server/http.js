@@ -50,6 +50,7 @@ const server = http.createServer((req, res) => {
     const cookies = parseCookies(req.headers.cookie || '');
     if (!headers.authorization && cookies.crm_session) {
       headers['x-crm-token'] = cookies.crm_session;
+      headers.authorization = `Bearer ${cookies.crm_session}`;
     }
 
     try {
