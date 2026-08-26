@@ -4,6 +4,15 @@ const { routeRequest } = require('./routes');
 const PORT = Number(process.env.PORT || 10000);
 const MAX_BODY_BYTES = 256 * 1024;
 
+function parseCookies(header='') {
+  const out = {};
+  for (const part of String(header).split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+
 const server = http.createServer((req, res) => {
   let rawBody = '';
   let size = 0;
@@ -37,6 +46,11 @@ const server = http.createServer((req, res) => {
     }
 
     const url = new URL(req.url || '/', 'http://localhost');
+    const headers = { ...req.headers };
+    const cookies = parseCookies(req.headers.cookie || '');
+    if (!headers.authorization && cookies.crm_session) {
+      headers['x-crm-token'] = cookies.crm_session;
+    }
 
     try {
       const result = await routeRequest({
@@ -46,13 +60,21 @@ const server = http.createServer((req, res) => {
         body,
         rawBody,
         signatureHeader: req.headers['x-hub-signature-256'] || '',
-        headers: req.headers
+        headers
       });
 
       res.statusCode = result.status;
       res.setHeader('Content-Type', result.contentType || (result.text ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8'));
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
+
+      // Persist the successful CRM login independently of sessionStorage.
+      if (req.method === 'POST' && url.pathname === '/api/auth/login' && result.status === 200 && result.body?.token) {
+        res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(result.body.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`);
+      }
+      if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
+        res.setHeader('Set-Cookie', 'crm_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+      }
 
       let responseBody = result.raw ? result.body : (result.text ? String(result.body) : JSON.stringify(result.body));
 
