@@ -14,7 +14,7 @@ function nextStep(lead={},text='',authorizedHumanRelease=false){
   if(state===BLOCKED&&!authorizedHumanRelease)return{reply:null,status:BLOCKED,handoff:true,nextAction:'AGUARDANDO_RETORNO_DO_LUIS'};
   if(state===SCHEDULE_GATE&&!authorizedHumanRelease)return{reply:null,status:SCHEDULE_GATE,handoff:true,nextAction:'AGUARDANDO_CONFIRMACAO_AGENDA'};
   if(state===HUMAN&&!authorizedHumanRelease)return{reply:null,status:HUMAN,handoff:true};
-  if(state===NEW)return{reply:'Olá! Tudo bem? Para começarmos, com quem eu estou falando?',status:STATES.IDENTIFYING,handoff:false};
+  if(state===STATES.NEW)return{reply:'Olá! Tudo bem? Para começarmos, com quem eu estou falando?',status:STATES.IDENTIFYING,handoff:false};
   if(state===STATES.IDENTIFYING){const safeName=String(text).trim().slice(0,80);return{reply:`Prazer, ${safeName||'tudo bem'}! O que você está procurando hoje para sua empresa?`,status:STATES.QUALIFYING,handoff:false};}
   if(state===STATES.QUALIFYING){
     if(creditTerms.test(q))return{reply:'Entendi. Esse tipo de produto depende de análise do banco e não representa aprovação automática. Neste primeiro momento, vamos verificar a solução de conta PJ ou máquina para sua empresa. Me informe o CNPJ, por favor.',status:STATES.CNPJ_PENDING,handoff:false};
