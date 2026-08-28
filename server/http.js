@@ -69,7 +69,6 @@ const server = http.createServer((req, res) => {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
 
-      // Persist the successful CRM login independently of sessionStorage.
       if (req.method === 'POST' && url.pathname === '/api/auth/login' && result.status === 200 && result.body?.token) {
         res.setHeader('Set-Cookie', `crm_session=${encodeURIComponent(result.body.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200`);
       }
@@ -77,16 +76,7 @@ const server = http.createServer((req, res) => {
         res.setHeader('Set-Cookie', 'crm_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
       }
 
-      let responseBody = result.raw ? result.body : (result.text ? String(result.body) : JSON.stringify(result.body));
-
-      // Do not inject another login handler here. public/app.js owns the login flow.
-      // The server only restores an already authenticated client session.
-      if (result.raw && String(result.contentType || '').startsWith('text/html')) {
-        const html = Buffer.isBuffer(responseBody) ? responseBody.toString('utf8') : String(responseBody);
-        const bootstrap = `<script>(function(){try{if(typeof nav==='function')nav();if(typeof state!=='undefined'&&state.token&&typeof showApp==='function'){showApp();if(typeof load==='function')load()}}catch(e){console.error('CRM_BOOTSTRAP_FAILED',e)}})();</script>`;
-        responseBody = html.replace('</body>', bootstrap + '</body>');
-      }
-
+      const responseBody = result.raw ? result.body : (result.text ? String(result.body) : JSON.stringify(result.body));
       res.end(responseBody);
     } catch (error) {
       console.error(JSON.stringify({
