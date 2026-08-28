@@ -1,4 +1,4 @@
-const { processEvent, HUMAN, BLOCKED } = require('../backend/core/orchestrator');
+const { processEvent, HUMAN, BLOCKED, SCHEDULE_GATE } = require('../backend/core/orchestrator');
 const { createOutboundMessageHandler } = require('./outbound-message');
 const { generate } = require('../backend/ai/provider');
 const { getConfig } = require('./config');
@@ -8,6 +8,7 @@ function createProductionSdrGateway({ repository, sender, env = process.env } = 
   if (!repository || !sender) throw new Error('PRODUCTION_SDR_DEPENDENCIES_REQUIRED');
   const config = getConfig(env);
   const outbound = createOutboundMessageHandler({ repository, sender });
+  const HUMAN_GATED = new Set([HUMAN, BLOCKED, SCHEDULE_GATE]);
 
   return {
     async process({ lead, message }) {
@@ -23,14 +24,14 @@ function createProductionSdrGateway({ repository, sender, env = process.env } = 
       }
       const context = String(env.CRM_KNOWLEDGE_BASE || '').slice(0, 12000);
 
-      if (config.aiAssistEnabled && decision.status !== HUMAN && decision.status !== BLOCKED && decision.reply) {
+      // Human gates are authoritative. The generative model cannot rewrite their wording,
+      // status or next action, and cannot resume a gated conversation by itself.
+      if (config.aiAssistEnabled && !HUMAN_GATED.has(decision.status) && decision.reply) {
         try {
           const aiDecision = await generate({ lead, text: message.text || '', decision, history, context });
           const candidate = String(aiDecision?.reply || '').trim();
           if (candidate && candidate.length <= 1000) finalDecision = { ...decision, reply: candidate };
-        } catch (error) {
-          console.warn('AI_ASSIST_FALLBACK', error?.message || 'AI_ERROR');
-        }
+        } catch (error) { console.warn('AI_ASSIST_FALLBACK', error?.message || 'AI_ERROR'); }
       }
 
       await repository.updateLead(lead.id, {
@@ -50,7 +51,8 @@ function createProductionSdrGateway({ repository, sender, env = process.env } = 
           tool: finalDecision.tool || null,
           score: score.total,
           temperature: score.temperature,
-          readyForSales: score.readyForSales
+          readyForSales: score.readyForSales,
+          humanGate: HUMAN_GATED.has(finalDecision.status)
         }
       });
 
