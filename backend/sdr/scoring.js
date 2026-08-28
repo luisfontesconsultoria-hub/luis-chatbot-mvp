@@ -15,15 +15,17 @@ function calculateLeadScore(lead = {}) {
 
   let total = 0;
   const status = String(lead.status || 'NEW').toUpperCase();
+  // QUALIFIED and above represent a sales-vetted stage, so QUALIFIED starts at the priority threshold.
   const statusScore = {
-    NEW: 5, IDENTIFYING: 10, QUALIFYING: 20, QUALIFIED: 55,
+    NEW: 5, IDENTIFYING: 10, QUALIFYING: 20, QUALIFIED: 85,
     ACCEPTED: 65, MEETING_MODE: 75, SCHEDULING: 80,
     CONFIRMED: 90, NEGOTIATION: 85, AGUARDANDO_RETORNO: 60,
     AGUARDANDO_RETORNO_DO_LUIS: 75, CONVERTIDO: 100
   }[status] ?? 5;
   total += statusScore;
-  if (lead.companyName) total += 3;
-  if (lead.cnpj) total += 3;
+  // Company identity and verified CNPJ are strong qualification signals.
+  if (lead.companyName) total += 6;
+  if (lead.cnpj) total += 10;
   if (lead.interest) total += 4;
   if (lead.painPoint) total += 5;
   if (lead.monthlyRevenue) total += 3;
