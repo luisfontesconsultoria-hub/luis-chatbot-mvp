@@ -11,8 +11,8 @@ const bankTerms=/\b(itau|bradesco|santander|banrisul|sicredi|sicoob|inter|nubank
 const accountMachineTogether=/conta.{0,80}(maquina|máquina)|(?:maquina|máquina).{0,80}conta/i;
 function nextStep(lead={},text='',authorizedHumanRelease=false){
   const q=normalize(text); const rawState=lead.status||STATES.NEW; const state=rawState==='NOVO'?STATES.NEW:rawState;
-  if(state===BLOCKED&&!authorizedHumanRelease)return{reply:'Recebi sua mensagem. Seu atendimento está aguardando o retorno do Luís. Assim que ele retornar, continuamos por aqui.',status:BLOCKED,handoff:true,nextAction:'AGUARDANDO_RETORNO_DO_LUIS'};
-  if(state===SCHEDULE_GATE&&!authorizedHumanRelease)return{reply:'Perfeito. Recebi sua preferência de data e horário. Vou aguardar a confirmação do Luís para finalizar o agendamento.',status:SCHEDULE_GATE,handoff:true,nextAction:'AGUARDANDO_CONFIRMACAO_AGENDA'};
+  if(state===BLOCKED&&!authorizedHumanRelease)return{reply:null,status:BLOCKED,handoff:true,nextAction:'AGUARDANDO_RETORNO_DO_LUIS'};
+  if(state===SCHEDULE_GATE&&!authorizedHumanRelease)return{reply:null,status:SCHEDULE_GATE,handoff:true,nextAction:'AGUARDANDO_CONFIRMACAO_AGENDA'};
   if(state===HUMAN&&!authorizedHumanRelease)return{reply:null,status:HUMAN,handoff:true};
   if(state===NEW)return{reply:'Olá! Tudo bem? Para começarmos, com quem eu estou falando?',status:STATES.IDENTIFYING,handoff:false};
   if(state===STATES.IDENTIFYING){const safeName=String(text).trim().slice(0,80);return{reply:`Prazer, ${safeName||'tudo bem'}! O que você está procurando hoje para sua empresa?`,status:STATES.QUALIFYING,handoff:false};}
