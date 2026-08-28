@@ -14,8 +14,6 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: OPENAI_API_KEY
-        sync: false
       - key: META_VERIFY_TOKEN
         sync: false
       - key: META_APP_SECRET
@@ -26,8 +24,16 @@ services:
         sync: false
       - key: META_GRAPH_API_VERSION
         value: v20.0
+      - key: AI_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
       - key: AI_ASSIST_ENABLED
         value: "false"
+      - key: CRM_KNOWLEDGE_BASE
+        sync: false
       - key: CRM_ADMIN_USER
         sync: false
       - key: CRM_ADMIN_PASSWORD
