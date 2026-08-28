@@ -1,12 +1,76 @@
-/** AI provider boundary. The commercial state machine remains authoritative. */
-function requireKey(){if(!process.env.OPENAI_API_KEY)throw new Error('OPENAI_API_KEY_NOT_CONFIGURED');return process.env.OPENAI_API_KEY;}
-async function generate({lead,text,decision}){
-  const key=requireKey(); const controller=new AbortController(); const timeout=setTimeout(()=>controller.abort(),12000);
-  try{
-    const response=await fetch('https://api.openai.com/v1/responses',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5',store:false,max_output_tokens:180,input:[{role:'system',content:'Você é o assistente comercial da consultoria. Siga estritamente o estado e a próxima ação fornecidos pelo backend. Não invente aprovação, preços ou condições. Responda em português do Brasil, de forma curta, profissional e natural para WhatsApp.'},{role:'user',content:JSON.stringify({lead:{name:lead?.name||null,companyName:lead?.companyName||null,status:lead?.status||null},text,status:decision.status,nextAction:decision.nextAction})}]}),signal:controller.signal});
-    if(!response.ok)throw new Error(`OPENAI_HTTP_${response.status}`);
-    const data=await response.json(); const output=String(data.output_text||data.output?.flatMap(x=>x.content||[]).map(x=>x.text||'').join('')||'').trim();
-    return {...decision,reply:output||decision.reply};
-  }finally{clearTimeout(timeout);}
+const { getConfig } = require('../../server/config');
+
+function extractGeminiText(data) {
+  return String(data?.candidates?.[0]?.content?.parts?.map(part => part?.text || '').join('') || '').trim();
 }
-module.exports={generate};
+
+async function generateGemini({ lead, text, decision, history = [], context = '' }, config) {
+  if (!config.geminiApiKey) throw new Error('GEMINI_API_KEY_NOT_CONFIGURED');
+  const system = [
+    'Você é o assistente comercial da consultoria.',
+    'Siga estritamente o estado e a próxima ação fornecidos pelo backend.',
+    'Não invente aprovação, preços, taxas, prazos ou condições.',
+    'Use somente o contexto de conhecimento fornecido.',
+    'Se a informação não estiver no contexto, admita que precisa confirmar.',
+    'Responda em português do Brasil.',
+    'Seja curto, profissional, natural e adequado para WhatsApp.',
+    'Faça uma pergunta por vez e não transforme a conversa em interrogatório.',
+    `ESTADO: ${decision.status}`,
+    `PRÓXIMA AÇÃO: ${decision.nextAction || 'continuar conversa'}`,
+    `CONTEXTO DA BASE:\n${context || 'Nenhum contexto adicional disponível.'}`
+  ].join('\n');
+  const contents = [
+    ...history.slice(-12).map(item => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(item.text || '') }] })),
+    { role: 'user', parts: [{ text: JSON.stringify({ lead: { name: lead?.name || null, companyName: lead?.companyName || null, interest: lead?.interest || null, status: lead?.status || null }, message: text }) }] }
+  ];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(config.geminiModel)}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`;
+    const response = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents, generationConfig: { temperature: 0.35, maxOutputTokens: 220 } }),
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`GEMINI_HTTP_${response.status}`);
+    return { ...decision, reply: extractGeminiText(await response.json()) || decision.reply };
+  } finally { clearTimeout(timeout); }
+}
+
+async function generateOllama({ lead, text, decision, history = [], context = '' }, config) {
+  const system = [
+    'Você é um SDR comercial. Siga estritamente o estado do backend.',
+    'Não invente informações. Use somente o contexto fornecido.',
+    'Responda em português brasileiro, de forma natural e curta.',
+    `ESTADO: ${decision.status}`,
+    `PRÓXIMA AÇÃO: ${decision.nextAction || 'continuar conversa'}`,
+    `CONTEXTO:\n${context || 'Nenhum.'}`
+  ].join('\n');
+  const messages = [
+    { role: 'system', content: system },
+    ...history.slice(-12).map(item => ({ role: item.role, content: String(item.text || '') })),
+    { role: 'user', content: JSON.stringify({ lead: { name: lead?.name || null, companyName: lead?.companyName || null }, message: text }) }
+  ];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(`${config.ollamaBaseUrl.replace(/\/$/, '')}/api/chat`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: config.ollamaModel, messages, stream: false, options: { temperature: 0.35 } }),
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`OLLAMA_HTTP_${response.status}`);
+    const data = await response.json();
+    return { ...decision, reply: String(data?.message?.content || '').trim() || decision.reply };
+  } finally { clearTimeout(timeout); }
+}
+
+async function generate(args) {
+  const config = getConfig();
+  if (!config.aiAssistEnabled) return args.decision;
+  if (config.aiProvider === 'ollama') return generateOllama(args, config);
+  if (config.aiProvider === 'gemini') return generateGemini(args, config);
+  throw new Error(`AI_PROVIDER_NOT_SUPPORTED:${config.aiProvider}`);
+}
+
+module.exports = { generate, extractGeminiText };
