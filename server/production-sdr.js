@@ -2,6 +2,7 @@ const { processEvent, HUMAN, BLOCKED } = require('../backend/core/orchestrator')
 const { createOutboundMessageHandler } = require('./outbound-message');
 const { generate } = require('../backend/ai/provider');
 const { getConfig } = require('./config');
+const { calculateLeadScore } = require('../backend/sdr/scoring');
 
 function createProductionSdrGateway({ repository, sender, env = process.env } = {}) {
   if (!repository || !sender) throw new Error('PRODUCTION_SDR_DEPENDENCIES_REQUIRED');
@@ -10,20 +11,24 @@ function createProductionSdrGateway({ repository, sender, env = process.env } = 
 
   return {
     async process({ lead, message }) {
-      const decision = processEvent({
-        lead,
-        text: message.text || '',
-        externalMessageId: message.external_message_id
-      });
-
+      const decision = processEvent({ lead, text: message.text || '', externalMessageId: message.external_message_id });
       let finalDecision = decision;
+      const score = calculateLeadScore(lead);
+      let history = [];
+      if (typeof repository.listMessages === 'function') {
+        try {
+          const rows = await repository.listMessages({ leadId: lead.id, limit: 12 });
+          history = rows.slice().reverse().map(row => ({ role: row.direction === 'OUTBOUND' ? 'assistant' : 'user', text: row.text_content || '' }));
+        } catch (error) { console.warn('SDR_HISTORY_FALLBACK', error?.message || 'HISTORY_ERROR'); }
+      }
+      const context = String(env.CRM_KNOWLEDGE_BASE || '').slice(0, 12000);
+
       if (config.aiAssistEnabled && decision.status !== HUMAN && decision.status !== BLOCKED && decision.reply) {
         try {
-          const aiDecision = await generate({ lead, text: message.text || '', decision });
+          const aiDecision = await generate({ lead, text: message.text || '', decision, history, context });
           const candidate = String(aiDecision?.reply || '').trim();
           if (candidate && candidate.length <= 1000) finalDecision = { ...decision, reply: candidate };
         } catch (error) {
-          // AI is an assistive layer only; deterministic SDR response remains the fallback.
           console.warn('AI_ASSIST_FALLBACK', error?.message || 'AI_ERROR');
         }
       }
@@ -40,18 +45,25 @@ function createProductionSdrGateway({ repository, sender, env = process.env } = 
         from_status: lead.status || 'NEW',
         to_status: finalDecision.status,
         actor: 'SDR_AI',
-        metadata: { handoff: Boolean(finalDecision.handoff), tool: finalDecision.tool || null }
+        metadata: {
+          handoff: Boolean(finalDecision.handoff),
+          tool: finalDecision.tool || null,
+          score: score.total,
+          temperature: score.temperature,
+          readyForSales: score.readyForSales
+        }
       });
 
-      if (finalDecision.reply && finalDecision.status !== HUMAN) {
-        await outbound({ lead, text: finalDecision.reply });
-      }
+      if (finalDecision.reply && finalDecision.status !== HUMAN) await outbound({ lead, text: finalDecision.reply });
 
       return {
         status: finalDecision.status,
         handoff: Boolean(finalDecision.handoff),
         replySent: Boolean(finalDecision.reply && finalDecision.status !== HUMAN),
-        aiAssist: Boolean(config.aiAssistEnabled && finalDecision.reply && finalDecision.reply !== decision.reply)
+        aiAssist: Boolean(config.aiAssistEnabled && finalDecision.reply && finalDecision.reply !== decision.reply),
+        score: score.total,
+        temperature: score.temperature,
+        readyForSales: score.readyForSales
       };
     }
   };
