@@ -13,4 +13,15 @@ const qualified = calculateLeadScore({ fitScore:20, needScore:20, authorityScore
 assert.equal(qualified.total,100);
 assert.equal(qualified.temperature,'QUALIFIED');
 assert.equal(qualified.readyForSales,true);
+
+// Regression: verified company data materially raises a new lead's score.
+const verifiedNew = calculateLeadScore({ status:'NEW', companyName:'Empresa Teste', cnpj:'12345678000199' });
+assert.equal(verifiedNew.total,21);
+assert.equal(verifiedNew.temperature,'COLD');
+
+// Regression: a QUALIFIED lead starts at the sales-priority threshold.
+const qualifiedStage = calculateLeadScore({ status:'QUALIFIED', interest:true });
+assert.equal(qualifiedStage.total,89);
+assert.equal(qualifiedStage.temperature,'QUALIFIED');
+
 console.log('scoring.test.js: ok');
