@@ -1,9 +1,10 @@
 /** Pure commercial-assistant helpers. No external side effects and no credentials. */
-const STATUS_WEIGHT=Object.freeze({NEW:20,IDENTIFYING:30,QUALIFYING:45,QUALIFIED:65,ACCEPTED:75,MEETING_MODE:80,SCHEDULING:85,CONFIRMED:95,NEGOTIATION:90});
+const { calculateLeadScore } = require('./sdr/scoring');
+
 function normalizePhone(v){return String(v||'').replace(/\D/g,'')}
-function scoreLead(lead={}){let score=STATUS_WEIGHT[String(lead.status||'NEW').toUpperCase()]||20;if(lead.cnpj)score+=5;if(lead.companyName)score+=5;if(lead.monthlyRevenue)score+=5;if(lead.painPoint)score+=5;if(lead.interest)score+=5;if(lead.nextAction)score+=3;return Math.max(0,Math.min(100,score))}
+function scoreLead(lead={}){return calculateLeadScore(lead).total}
 function priority(score){return score>=85?'HIGH':score>=65?'MEDIUM':'LOW'}
-function buildLeadSummary(lead={}){const score=scoreLead(lead);return{lead_id:lead.id||null,score,priority:priority(score),status:lead.status||'NEW',next_action:lead.nextAction||null,location:{address:lead.address||null,city:lead.city||null,state:lead.state||null,latitude:lead.latitude||null,longitude:lead.longitude||null}}}
+function buildLeadSummary(lead={}){const scored=calculateLeadScore(lead);return{lead_id:lead.id||null,score:scored.total,temperature:scored.temperature,readyForSales:scored.readyForSales,priority:priority(scored.total),status:lead.status||'NEW',next_action:lead.nextAction||null,location:{address:lead.address||null,city:lead.city||null,state:lead.state||null,latitude:lead.latitude||null,longitude:lead.longitude||null}}}
 function rankAppointmentSlots(slots=[],constraints={}){const start=constraints.startMinutes==null?480:Number(constraints.startMinutes),end=constraints.endMinutes==null?1080:Number(constraints.endMinutes);if(!Number.isFinite(start)||!Number.isFinite(end)||start>end)return[];return slots.filter(s=>Number.isFinite(Number(s.startMinutes))&&Number(s.startMinutes)>=start&&Number(s.startMinutes)<=end).sort((a,b)=>(Number(b.priority||0)-Number(a.priority||0))||(Number(a.travelMinutes||0)-Number(b.travelMinutes||0))||(Number(a.startMinutes)-Number(b.startMinutes)))}
 function routeOrder(stops=[]){return [...stops].sort((a,b)=>{const ap=Number(a.priority||0),bp=Number(b.priority||0);if(ap!==bp)return bp-ap;return Number(a.travelMinutes||0)-Number(b.travelMinutes||0)})}
 function buildRoutePlan(stops=[],options={}){const ordered=routeOrder(stops);return{date:options.date||null,startAt:options.startAt||null,endAt:options.endAt||null,origin:options.origin||null,stops:ordered,count:ordered.length,hasRealTravelData:ordered.every(s=>Number.isFinite(Number(s.travelMinutes))),optimization:ordered.every(s=>Number.isFinite(Number(s.travelMinutes)))?'priority_then_travel_time':'priority_only'}}
