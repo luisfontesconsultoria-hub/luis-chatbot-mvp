@@ -1,23 +1,21 @@
 /** Canonical decision shape used between SDR, persistence and channel layers. */
-const ALLOWED = new Set([
-  'NEW','IDENTIFYING','QUALIFYING','QUALIFYING_REVENUE','QUALIFYING_PAIN',
-  'QUALIFYING_ACCEPTANCE','CNPJ_PENDING','AGUARDANDO_RETORNO_DO_LUIS',
-  'MEETING_MODE','SCHEDULING','CONFIRMED','HUMAN_HANDOFF','LOST','ERROR_RETRY','CLOSED'
-]);
+const { STATES } = require('./sdr-contract');
+const ALLOWED = new Set(Object.values(STATES));
 
 function normalizeDecision(raw = {}) {
-  const status = ALLOWED.has(raw.status) ? raw.status : 'ERROR_RETRY';
+  const status = ALLOWED.has(raw.status) ? raw.status : STATES.ERROR_RETRY;
   return {
     status,
     reply: raw.reply == null ? null : String(raw.reply),
     handoff: Boolean(raw.handoff),
     tool: raw.tool || null,
-    nextAction: raw.nextAction || (raw.handoff ? 'LUIS' : null)
+    nextAction: raw.nextAction || (raw.handoff ? 'LUIS' : null),
+    authorizedHumanRelease: Boolean(raw.authorizedHumanRelease)
   };
 }
 
 function assertTransition(previous, decision) {
-  if (previous === 'AGUARDANDO_RETORNO_DO_LUIS' && decision.status !== previous && !decision.authorizedHumanRelease) {
+  if ((previous === STATES.AGUARDANDO_RETORNO_DO_LUIS || previous === STATES.AGUARDANDO_CONFIRMACAO_AGENDA) && decision.status !== previous && !decision.authorizedHumanRelease) {
     throw new Error('blocked_state_transition_denied');
   }
   return true;
