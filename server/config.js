@@ -6,8 +6,15 @@ function firstEnv(env, names, fallback = undefined) {
 }
 
 function getConfig(env = process.env) {
-  const aiConfigured = Boolean(env.OPENAI_API_KEY);
+  const aiProvider = String(env.AI_PROVIDER || 'gemini').trim().toLowerCase();
+  const aiKey = aiProvider === 'gemini'
+    ? env.GEMINI_API_KEY
+    : aiProvider === 'ollama'
+      ? true
+      : null;
+  const aiConfigured = Boolean(aiKey);
   const aiFlag = String(env.AI_ASSIST_ENABLED ?? (aiConfigured ? 'true' : 'false')).toLowerCase();
+
   return Object.freeze({
     nodeEnv: env.NODE_ENV || 'production',
     port: Number(env.PORT || 10000),
@@ -18,9 +25,13 @@ function getConfig(env = process.env) {
     metaAccessToken: firstEnv(env, ['WHATSAPP_ACCESS_TOKEN', 'META_ACCESS_TOKEN']),
     metaPhoneNumberId: firstEnv(env, ['WHATSAPP_PHONE_NUMBER_ID', 'META_PHONE_NUMBER_ID']),
     metaGraphApiVersion: firstEnv(env, ['WHATSAPP_GRAPH_API_VERSION', 'META_GRAPH_API_VERSION'], 'v20.0'),
-    openAiApiKey: env.OPENAI_API_KEY || null,
-    openAiModel: env.OPENAI_MODEL || 'gpt-5.6-luna',
-    aiAssistEnabled: aiFlag === 'true'
+    aiProvider,
+    aiConfigured,
+    aiAssistEnabled: aiFlag === 'true',
+    geminiApiKey: env.GEMINI_API_KEY || null,
+    geminiModel: env.GEMINI_MODEL || 'gemini-2.5-flash',
+    ollamaBaseUrl: env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
+    ollamaModel: env.OLLAMA_MODEL || 'gemma3:4b'
   });
 }
 
