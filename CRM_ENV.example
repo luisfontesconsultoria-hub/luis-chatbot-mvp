@@ -7,6 +7,10 @@ CRM_AUTH_SECRET=CHANGE_ME_TO_A_LONG_RANDOM_SECRET
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
 
+# Google Places / client capture
+# Enable Places API (New) and billing in Google Cloud before setting this value.
+GOOGLE_MAPS_API_KEY=
+
 # OpenAI (optional for V1; deterministic SDR remains fallback)
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5.6-luna
