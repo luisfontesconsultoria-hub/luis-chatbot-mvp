@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20.19.0
           cache: npm
       # package-lock.json is intentionally kept compatible with the
       # production npm-install build while dependencies are being normalized.
