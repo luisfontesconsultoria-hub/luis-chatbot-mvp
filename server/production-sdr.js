@@ -56,6 +56,21 @@ function createProductionSdrGateway({ repository, sender, env = process.env } = 
         }
       });
 
+      // Persist the two human-pause states as events so they are visible in the CRM history.
+      if (HUMAN_GATED.has(finalDecision.status) && typeof repository.createEvent === 'function') {
+        const key = message.external_message_id || `${lead.id}:${finalDecision.status}:${Date.now()}`;
+        await repository.createEvent({
+          lead_id: lead.id,
+          type: 'SDR_HUMAN_GATE',
+          idempotency_key: `SDR_HUMAN_GATE:${key}`,
+          payload: {
+            status: finalDecision.status,
+            nextAction: finalDecision.nextAction || null,
+            handoff: Boolean(finalDecision.handoff)
+          }
+        });
+      }
+
       if (finalDecision.reply && finalDecision.status !== HUMAN) await outbound({ lead, text: finalDecision.reply });
 
       return {
