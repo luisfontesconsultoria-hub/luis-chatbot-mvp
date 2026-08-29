@@ -13,12 +13,12 @@ const { createOutboundMessageHandler } = require('./outbound-message');
   const outbound=createOutboundMessageHandler({repository:repo,sender});
   const sdr=createSdrGateway({
     qualify:async()=>({status:'QUALIFIED'}),
-    respond:async({lead})=>{ await outbound.send({lead,text:'Olá! Recebi sua mensagem e vou continuar seu atendimento.'}); return {sent:true}; }
+    respond:async({lead})=>{ await outbound({lead,text:'Olá! Recebi sua mensagem e vou continuar seu atendimento.'}); return {sent:true}; }
   });
   const pipeline=createWebhookPipeline({repository:repo,sdrGateway:sdr});
   const input={external_message_id:'wamid.in.1',phone:'5551999999999',timestamp:'2026-08-22T15:00:00Z',text:'Quero abrir conta PJ',type:'text',source:'WHATSAPP'};
-  const first=await pipeline.process([input]);
-  const second=await pipeline.process([input]);
+  const first=await pipeline([input]);
+  const second=await pipeline([input]);
   if(first[0].status!=='processed') throw Error('E2E_INBOUND_FAILED');
   if(first[0].outcome.status!=='PROCESSED') throw Error('E2E_SDR_FAILED');
   const inbound=messages.find(x=>x.direction==='INBOUND');
