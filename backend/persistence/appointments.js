@@ -1,0 +1,6 @@
+/** Appointment persistence built on the existing events table; no schema migration required. */
+const PREFIX='APPOINTMENT_';
+function normalize(input={}){return{appointmentId:String(input.appointmentId||input.id||`${Date.now()}-${Math.random().toString(36).slice(2,8)}`),leadId:input.leadId||input.lead_id||null,clientName:String(input.clientName||input.client_name||'').trim(),companyName:String(input.companyName||input.company_name||'').trim(),phone:String(input.phone||'').replace(/\D/g,''),cnpj:String(input.cnpj||'').replace(/\D/g,''),date:String(input.date||'').slice(0,10),time:String(input.time||'').slice(0,5),type:String(input.type||'VISITA').toUpperCase(),origin:String(input.origin||'MANUAL').toUpperCase(),address:String(input.address||'').trim(),notes:String(input.notes||'').trim(),status:String(input.status||'PENDING_CONFIRMATION').toUpperCase()};}
+function eventFor(a,actor='LUIS'){return{type:PREFIX+'UPSERT',lead_id:a.leadId,payload:{appointment:a,actor}}}
+function fromEvents(events=[]){const map=new Map();for(const e of events){const a=e?.payload?.appointment;if(e?.type===PREFIX+'UPSERT'&&a)map.set(a.appointmentId,a)}return[...map.values()].sort((a,b)=>`${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));}
+module.exports={normalize,eventFor,fromEvents,PREFIX};
