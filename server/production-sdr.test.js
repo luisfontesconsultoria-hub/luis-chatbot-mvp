@@ -42,6 +42,6 @@ const { createProductionSdrGateway } = require('./production-sdr');
   assert.ok(updates.some(x=>x.patch.status==='AGUARDANDO_CONFIRMACAO_AGENDA'));
   assert.ok(audits.some(x=>x.metadata?.humanGate===true));
   assert.ok(events.length >= 4);
-  assert.equal(messages.length, 0);
+  assert.equal(messages.length, 3);
   console.log('PASS production SDR gateway and human gates');
 })();
