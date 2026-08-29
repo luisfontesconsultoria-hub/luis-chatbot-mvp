@@ -1,8 +1,12 @@
 const http = require('http');
 const { routeRequest } = require('./routes');
+const { createProductionRuntime } = require('./runtime');
+const auth = require('./auth');
+const { appointmentsRoute } = require('../backend/appointments-api');
 
 const PORT = Number(process.env.PORT || 10000);
 const MAX_BODY_BYTES = 256 * 1024;
+const appointmentRuntime = createProductionRuntime();
 
 function parseCookies(header='') {
   const out = {};
@@ -11,6 +15,18 @@ function parseCookies(header='') {
     if (i > 0) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
   }
   return out;
+}
+function authorized(headers={}) {
+  const value = String(headers.authorization || '');
+  if (!value.startsWith('Bearer ')) return false;
+  return Boolean(auth.authenticate(value.slice(7)));
+}
+function withAppointmentsScript(result) {
+  if (!result?.raw || !Buffer.isBuffer(result.body)) return result;
+  const html = result.body.toString('utf8');
+  if (!html.includes('</body>') || html.includes('/appointments.js')) return result;
+  result.body = Buffer.from(html.replace('</body>', '<script src="/appointments.js?v=20260829-1"></script></body>'), 'utf8');
+  return result;
 }
 
 const server = http.createServer((req, res) => {
@@ -54,15 +70,23 @@ const server = http.createServer((req, res) => {
     }
 
     try {
-      const result = await routeRequest({
-        method: req.method,
-        path: url.pathname,
-        query: Object.fromEntries(url.searchParams.entries()),
-        body,
-        rawBody,
-        signatureHeader: req.headers['x-hub-signature-256'] || '',
-        headers
-      });
+      let result;
+      if (url.pathname.startsWith('/api/crm/appointments')) {
+        result = authorized(headers)
+          ? await appointmentsRoute({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams.entries()), body, runtime: appointmentRuntime })
+          : { status: 401, body: { error: 'CRM_AUTH_REQUIRED' } };
+      } else {
+        result = await routeRequest({
+          method: req.method,
+          path: url.pathname,
+          query: Object.fromEntries(url.searchParams.entries()),
+          body,
+          rawBody,
+          signatureHeader: req.headers['x-hub-signature-256'] || '',
+          headers
+        });
+      }
+      result = withAppointmentsScript(result);
 
       res.statusCode = result.status;
       res.setHeader('Content-Type', result.contentType || (result.text ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8'));

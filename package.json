@@ -6,9 +6,9 @@
   "main":"server/http.js",
   "scripts":{
     "start":"node server/http.js",
-    "test":"node server/health.test.js && node server/security/idempotency.test.js && node server/config.test.js && node server/auth.test.js && node server/production-sdr.test.js && node server/qr-manager.test.js && node backend/commercial-assistant.test.js && node backend/sdr/scoring.test.js && node backend/ai/provider.test.js && node backend/persistence/crm-mapper.test.js && node backend/persistence/supabase-integration.test.js && node server/e2e-contract.test.js && node server/v1-contracts.test.js && node server/production-config.test.js && node server/supabase-runtime.test.js && node backend/core/orchestrator.test.js && node backend/core/transition-guard.test.js"
+    "test":"node server/health.test.js && node server/security/idempotency.test.js && node server/config.test.js && node server/auth.test.js && node server/production-sdr.test.js && node server/qr-manager.test.js && node backend/commercial-assistant.test.js && node backend/sdr/scoring.test.js && node backend/ai/provider.test.js && node backend/persistence/crm-mapper.test.js && node backend/persistence/supabase-integration.test.js && node backend/appointments.test.js && node server/appointments-api.test.js && node server/e2e-contract.test.js && node server/v1-contracts.test.js && node server/production-config.test.js && node server/supabase-runtime.test.js && node backend/core/orchestrator.test.js && node backend/core/transition-guard.test.js"
   },
-  "engines":{"node":">=20"},
+  "engines":{"node":"20.x"},
   "dependencies":{
     "@hapi/boom":"^10.0.1",
     "@supabase/supabase-js":"^2.57.0",
