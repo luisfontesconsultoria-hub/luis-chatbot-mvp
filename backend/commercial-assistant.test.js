@@ -5,6 +5,6 @@ assert.deepStrictEqual(rankAppointmentSlots([{startMinutes:600}],{startMinutes:1
 assert.deepStrictEqual(routeOrder([{id:'A',priority:50,travelMinutes:20},{id:'B',priority:90,travelMinutes:60}]).map(x=>x.id),['B','A']);
 const plan=buildRoutePlan([{id:'A',priority:50,travelMinutes:20},{id:'B',priority:90,travelMinutes:60}],{date:'2026-08-25',startAt:'09:00',origin:'Porto Alegre'});assert.equal(plan.count,2);assert.equal(plan.optimization,'priority_then_travel_time');assert.equal(plan.hasRealTravelData,true);assert.equal(plan.stops[0].id,'B');
 const fallback=buildRoutePlan([{id:'A',priority:50},{id:'B',priority:90}],{});assert.equal(fallback.optimization,'priority_only');assert.equal(fallback.hasRealTravelData,false);
-assert.equal(appointmentToPipelineStatus({confirmed:false}),'SCHEDULING');assert.equal(appointmentToPipelineStatus({confirmed:true,mode:'PRESENCIAL'}),'MEETING_MODE');assert.equal(appointmentToPipelineStatus({confirmed:true,mode:'REMOTO'}),'CONFIRMED');
+assert.equal(appointmentToPipelineStatus({confirmed:false}),'SCHEDULING');assert.equal(appointmentToPipelineStatus({confirmed:true,mode:'PRESENCIAL'}),'CONFIRMED');assert.equal(appointmentToPipelineStatus({confirmed:true,mode:'REMOTO'}),'CONFIRMED');
 assert.equal(visitResultToStatus('CONVERTED'),'CONVERTIDO');assert.equal(visitResultToStatus('SEM_INTERESSE'),'PERDIDO');assert.equal(visitResultToStatus('FOLLOW_UP'),'AGUARDANDO_RETORNO');assert.equal(visitResultToStatus('OUTRO'),null);
 console.log('commercial-assistant.test.js: ok');
