@@ -2,14 +2,14 @@
 const { TABLES, assertRepository } = require('./supabase-contract');
 const { toDbLead, fromDbLead } = require('./crm-mapper');
 function cleanRow(row={}){const out={};for(const [k,v] of Object.entries(row)){if(v===undefined||v===null)continue;if(typeof v==='string'&&v.trim()==='')continue;out[k]=v}return out}
-function baseLeadRow(row){const allowed=['name','company_name','phone','cnpj','source','campaign','product_interest','bank_current','machine_current','monthly_revenue','pain_point','status','owner','next_action','address','city','state','zip_code'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
+function baseLeadRow(row){const allowed=['name','company_name','phone','cnpj','source','campaign','product_interest','bank_current','machine_current','monthly_revenue','pain_point','status','stage','owner','next_action','address','city','state','zip_code'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
 function optionalLeadRow(row){const allowed=['updated_at','company_status','trade_name','neighborhood','address_number'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
 function createSupabaseRepository(client) {
   if (!client || typeof client.from !== 'function') throw new Error('SUPABASE_CLIENT_REQUIRED');
   return assertRepository({
-    async listLeads({limit=50,source,status}={}){let q=client.from(TABLES.leads).select('*').limit(limit);if(source)q=q.eq('source',source);if(status)q=q.eq('status',status);const{data,error}=await q;if(error)throw error;return(data||[]).map(fromDbLead)},
+    async listLeads({limit=50,source,status,stage}={}){let q=client.from(TABLES.leads).select('*').limit(limit);if(source)q=q.eq('source',source);if(status)q=q.eq('status',status);if(stage)q=q.eq('stage',stage);const{data,error}=await q;if(error)throw error;return(data||[]).map(fromDbLead)},
     async getLead(id){const{data,error}=await client.from(TABLES.leads).select('*').eq('id',id).single();if(error&&error.code!=='PGRST116')throw error;return data?fromDbLead(data):null},
-    async findOrCreateLeadByPhone(phone,defaults={}){if(!phone)throw new Error('PHONE_REQUIRED');const normalized=String(phone).replace(/\D/g,'');const{data:existing,error}=await client.from(TABLES.leads).select('*').eq('phone',normalized).limit(1);if(error)throw error;if(existing&&existing[0]){const lead=fromDbLead(existing[0]);if(!lead.name&&defaults.name){try{return await this.updateLead(existing[0].id,{name:defaults.name})}catch{}}return lead}return this.createLead({phone:normalized,source:defaults.source||'WHATSAPP',name:defaults.name||null})},
+    async findOrCreateLeadByPhone(phone,defaults={}){if(!phone)throw new Error('PHONE_REQUIRED');const normalized=String(phone).replace(/\D/g,'');const{data:existing,error}=await client.from(TABLES.leads).select('*').eq('phone',normalized).limit(1);if(error)throw error;if(existing&&existing[0]){const lead=fromDbLead(existing[0]);if(!lead.name&&defaults.name){try{return await this.updateLead(existing[0].id,{name:defaults.name})}catch{}}return lead}return this.createLead({phone:normalized,source:defaults.source||'WHATSAPP',name:defaults.name||null,stage:defaults.stage||'NEW'})},
     async createLead(payload){
       const row=cleanRow(toDbLead(payload));
       const full=await client.from(TABLES.leads).insert(row).select('*').single();
