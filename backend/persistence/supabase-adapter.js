@@ -9,7 +9,7 @@ function createSupabaseRepository(client) {
   return assertRepository({
     async listLeads({limit=50,source,status}={}){let q=client.from(TABLES.leads).select('*').limit(limit);if(source)q=q.eq('source',source);if(status)q=q.eq('status',status);const{data,error}=await q;if(error)throw error;return(data||[]).map(fromDbLead)},
     async getLead(id){const{data,error}=await client.from(TABLES.leads).select('*').eq('id',id).single();if(error&&error.code!=='PGRST116')throw error;return data?fromDbLead(data):null},
-    async findOrCreateLeadByPhone(phone,defaults={}){if(!phone)throw new Error('PHONE_REQUIRED');const normalized=String(phone).replace(/\D/g,'');const{data:existing,error}=await client.from(TABLES.leads).select('*').eq('phone',normalized).limit(1);if(error)throw error;if(existing&&existing[0])return fromDbLead(existing[0]);return this.createLead({phone:normalized,source:defaults.source||'WHATSAPP'})},
+    async findOrCreateLeadByPhone(phone,defaults={}){if(!phone)throw new Error('PHONE_REQUIRED');const normalized=String(phone).replace(/\D/g,'');const{data:existing,error}=await client.from(TABLES.leads).select('*').eq('phone',normalized).limit(1);if(error)throw error;if(existing&&existing[0]){const lead=fromDbLead(existing[0]);if(!lead.name&&defaults.name){try{return await this.updateLead(existing[0].id,{name:defaults.name})}catch{}}return lead}return this.createLead({phone:normalized,source:defaults.source||'WHATSAPP',name:defaults.name||null})},
     async createLead(payload){
       const row=cleanRow(toDbLead(payload));
       const full=await client.from(TABLES.leads).insert(row).select('*').single();
