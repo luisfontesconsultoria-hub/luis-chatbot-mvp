@@ -30,6 +30,7 @@ function withScripts(result) {
   let updated = html;
   if (!updated.includes('/appointments.js')) updated = updated.replace('</body>', '<script src="/appointments.js?v=20260829-1"></script></body>');
   if (!updated.includes('/crm-enhancements.js')) updated = updated.replace('</body>', '<script src="/crm-enhancements.js?v=20260830-2"></script></body>');
+  if (!updated.includes('/lead-import.js')) updated = updated.replace('</body>', '<script src="/lead-import.js?v=20260830-1"></script></body>');
   result.body = Buffer.from(updated, 'utf8');
   return result;
 }
