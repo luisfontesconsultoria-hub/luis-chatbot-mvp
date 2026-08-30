@@ -9,7 +9,7 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
       const key=message.external_message_id||`${message.phone}:${message.timestamp}:${message.text||''}`;
       if (idempotency.has(key)) { results.push({status:'duplicate',key}); continue; }
       try {
-        const lead=await repository.findOrCreateLeadByPhone(message.phone,{source:message.source||'WHATSAPP'});
+        const lead=await repository.findOrCreateLeadByPhone(message.phone,{source:message.source||'WHATSAPP',name:message.name||null});
         try {
           await repository.createEvent({lead_id:lead.id,type:'WHATSAPP_INBOUND',idempotency_key:key,payload:{external_message_id:key,type:message.type||'text',timestamp:message.timestamp||null}});
           idempotency.mark(key);
