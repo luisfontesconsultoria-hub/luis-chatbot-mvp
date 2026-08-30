@@ -12,7 +12,7 @@
   "dependencies":{
     "@hapi/boom":"^10.0.1",
     "@supabase/supabase-js":"2.109.0",
-    "@whiskeysockets/baileys":"^6.7.20",
+    "@whiskeysockets/baileys":"6.7.22",
     "qrcode":"^1.5.4",
     "municipios-brasil":"^0.1.1",
     "ws":"8.21.3"
