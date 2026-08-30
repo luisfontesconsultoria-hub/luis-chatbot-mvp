@@ -18,7 +18,6 @@
   function makeField(key,label,lead){
     const value=lead?.[key] ?? '';
     if(key==='interest') return `<label>${label}<select name="${key}"><option value="">Selecione</option><option ${value==='Conta PJ'?'selected':''}>Conta PJ</option><option ${value==='Máquina de cartão'?'selected':''}>Máquina de cartão</option><option ${value==='Conta PJ + Máquina'?'selected':''}>Conta PJ + Máquina</option><option ${value==='Outro'?'selected':''}>Outro</option></select></label>`;
-    if(key==='status') return `<label>${label}<input name="${key}" value="${esc(value)}" placeholder="Status comercial"></label>`;
     if(key==='painPoint') return `<label class="crm-edit-wide">${label}<textarea name="${key}">${esc(value)}</textarea></label>`;
     return `<label>${label}<input name="${key}" value="${esc(value)}"></label>`;
   }
@@ -34,10 +33,13 @@
   function addEditButton(){
     const head=q('.chat-head');if(!head||q('#crm-edit-lead'))return;const b=document.createElement('button');b.id='crm-edit-lead';b.className='ghost crm-edit-btn';b.textContent='Editar cliente';b.onclick=openEditor;head.appendChild(b);
   }
+  function wireComposer(){
+    const form=q('#send-form');if(!form||form.dataset.crmEnhanced==='1')return;form.dataset.crmEnhanced='1';form.onsubmit=async e=>{e.preventDefault();const lead=currentLead(),input=q('#send-text');const text=String(input?.value||'').trim();if(!lead||!text)return;const btn=form.querySelector('button');btn.disabled=true;try{await api(`/api/crm/leads/${encodeURIComponent(lead.id)}/messages`,{method:'POST',body:JSON.stringify({text})});input.value='';await showConversation(lead.id);toast('Mensagem enviada pelo WhatsApp');}catch(err){toast(err?.data?.error||err?.message||'Não foi possível enviar a mensagem.');}finally{btn.disabled=false}};
+  }
   function wrapConversation(){
     if(typeof window.showConversation!=='function'||window.__crmEnhancedConversation)return;
-    const original=window.showConversation;window.showConversation=async function(id){const r=await original(id);addEditButton();return r};window.__crmEnhancedConversation=true;
+    const original=window.showConversation;window.showConversation=async function(id){const r=await original(id);addEditButton();wireComposer();return r};window.__crmEnhancedConversation=true;
   }
-  function enhance(){wrapConversation();addEditButton();}
+  function enhance(){wrapConversation();addEditButton();wireComposer();}
   window.addEventListener('load',enhance);setInterval(enhance,1500);
 })();
