@@ -21,7 +21,18 @@ function normalizePatch(body = {}) {
   if (out.phone !== undefined) out.phone = out.phone ? String(out.phone).replace(/\D/g,'') : null;
   if (out.cnpj !== undefined) out.cnpj = out.cnpj ? String(out.cnpj).replace(/\D/g,'') : null;
   if (out.monthlyRevenue !== undefined && out.monthlyRevenue !== null) {
-    const n = Number(String(out.monthlyRevenue).replace(',','.'));
+    let s = String(out.monthlyRevenue).trim();
+    const hasComma = s.includes(',');
+    const hasDot = s.includes('.');
+    if (hasComma && hasDot) {
+      // formato BR: ponto = milhar, vírgula = decimal (ex: "12.345,67")
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else if (hasComma) {
+      // só vírgula presente: é o separador decimal (ex: "12345,67")
+      s = s.replace(',', '.');
+    }
+    // só ponto presente (ex: "12345.67") já está em formato válido, mantém como está
+    const n = Number(s);
     out.monthlyRevenue = Number.isFinite(n) ? n : null;
   }
   if (out.state) out.state = String(out.state).toUpperCase().slice(0,2);
