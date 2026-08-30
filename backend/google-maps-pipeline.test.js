@@ -13,8 +13,8 @@ test('normalizes Maps URLs deterministically', () => {
 });
 
 test('validates CNPJ check digits', () => {
-  expect(isValidCnpj('11.222.333/0001-81')).toBe(true);
-  expect(isValidCnpj('11.222.333/0001-82')).toBe(false);
+  expect(isValidCnpj('04.252.011/0001-10')).toBe(true);
+  expect(isValidCnpj('04.252.011/0001-11')).toBe(false);
   expect(isValidCnpj('11.111.111/1111-11')).toBe(false);
 });
 
