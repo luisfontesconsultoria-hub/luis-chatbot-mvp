@@ -38,16 +38,28 @@ async function route({ method, path, body }) {
     if (!lead) return { status:404, body:{ error:'LEAD_NOT_FOUND' } };
     const patch = normalizePatch(body);
     if (!Object.keys(patch).length) return { status:400, body:{ error:'NO_FIELDS_TO_UPDATE' } };
-    const updated = await runtime.repository.updateLead(id, patch);
-    await runtime.repository.createAudit({
-      lead_id:id,
-      action:'LEAD_UPDATED_MANUALLY',
-      from_status:lead.status || null,
-      to_status:updated.status || lead.status || null,
-      actor:'LUIS',
-      metadata:{ fields:Object.keys(patch) }
-    });
-    return { status:200, body:{ ok:true, lead:updated } };
+    let updated;
+    try {
+      updated = await runtime.repository.updateLead(id, patch);
+    } catch (error) {
+      console.error('LEAD_UPDATE_FAILED', { code:error?.code||null, message:error?.message||'PERSISTENCE_ERROR' });
+      return { status:500, body:{ error:'LEAD_UPDATE_FAILED', detail:{ code:error?.code||null, message:String(error?.message||'PERSISTENCE_ERROR').slice(0,220) } } };
+    }
+    // Audit is intentionally best-effort: a healthy lead update must never be
+    // reported as failed merely because the secondary audit table is unavailable.
+    try {
+      await runtime.repository.createAudit({
+        lead_id:id,
+        action:'LEAD_UPDATED_MANUALLY',
+        from_status:lead.status || null,
+        to_status:updated.status || lead.status || null,
+        actor:'LUIS',
+        metadata:{ fields:Object.keys(patch) }
+      });
+    } catch (error) {
+      console.error('LEAD_UPDATE_AUDIT_FAILED', { code:error?.code||null, message:error?.message||'AUDIT_PERSISTENCE_ERROR', lead_id:id });
+    }
+    return { status:200, body:{ ok:true, lead:updated, audit:'BEST_EFFORT' } };
   }
 
   const send = path.match(/^\/api\/crm\/leads\/([^/]+)\/messages$/);
@@ -78,4 +90,4 @@ async function route({ method, path, body }) {
   return { status:404, body:{ error:'CRM_ACTION_ROUTE_NOT_FOUND' } };
 }
 
-module.exports = { route };
+module.exports = { route, normalizePatch };
