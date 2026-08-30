@@ -1,13 +1,11 @@
 /** Maps the CRM model to the real V1 Supabase leads schema used in production.
- * IMPORTANT: these DB column names were verified directly against the live
- * `public.leads` table (information_schema.columns) on 2026-08-28. Do not
- * rename these without checking the live schema first.
+ * `status` is the internal SDR state. `stage` is the user-facing commercial pipeline stage.
  */
 const LEAD_TO_DB = Object.freeze({
   id:'id', name:'name', companyName:'company_name', phone:'phone', cnpj:'cnpj',
   source:'source', campaign:'campaign', interest:'product_interest', productInterest:'product_interest',
   bankCurrent:'bank_current', machineCurrent:'machine_current', monthlyRevenue:'monthly_revenue',
-  painPoint:'pain_point', status:'status', owner:'owner', nextAction:'next_action',
+  painPoint:'pain_point', status:'status', stage:'stage', owner:'owner', nextAction:'next_action',
   updatedAt:'updated_at', companyStatus:'company_status', tradeName:'trade_name',
   neighborhood:'neighborhood', addressNumber:'address_number', address:'address', city:'city',
   state:'state', zipCode:'zip_code'
