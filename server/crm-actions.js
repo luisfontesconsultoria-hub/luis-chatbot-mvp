@@ -13,7 +13,7 @@ function clean(value) {
 function normalizePatch(body = {}) {
   const allowed = [
     'name','phone','cnpj','companyName','tradeName','interest','bankCurrent','machineCurrent',
-    'monthlyRevenue','painPoint','owner','nextAction','status','source','campaign',
+    'monthlyRevenue','painPoint','owner','nextAction','stage','source','campaign',
     'address','addressNumber','neighborhood','city','state','zipCode','companyStatus'
   ];
   const out = {};
@@ -25,16 +25,14 @@ function normalizePatch(body = {}) {
     const hasComma = s.includes(',');
     const hasDot = s.includes('.');
     if (hasComma && hasDot) {
-      // formato BR: ponto = milhar, vírgula = decimal (ex: "12.345,67")
       s = s.replace(/\./g, '').replace(',', '.');
     } else if (hasComma) {
-      // só vírgula presente: é o separador decimal (ex: "12345,67")
       s = s.replace(',', '.');
     }
-    // só ponto presente (ex: "12345.67") já está em formato válido, mantém como está
     const n = Number(s);
     out.monthlyRevenue = Number.isFinite(n) ? n : null;
   }
+  if (out.stage) out.stage = String(out.stage).toUpperCase();
   if (out.state) out.state = String(out.state).toUpperCase().slice(0,2);
   return out;
 }
@@ -56,8 +54,6 @@ async function route({ method, path, body }) {
       console.error('LEAD_UPDATE_FAILED', { code:error?.code||null, message:error?.message||'PERSISTENCE_ERROR' });
       return { status:500, body:{ error:'LEAD_UPDATE_FAILED', detail:{ code:error?.code||null, message:String(error?.message||'PERSISTENCE_ERROR').slice(0,220) } } };
     }
-    // Audit is intentionally best-effort: a healthy lead update must never be
-    // reported as failed merely because the secondary audit table is unavailable.
     try {
       await runtime.repository.createAudit({
         lead_id:id,
@@ -65,7 +61,7 @@ async function route({ method, path, body }) {
         from_status:lead.status || null,
         to_status:updated.status || lead.status || null,
         actor:'LUIS',
-        metadata:{ fields:Object.keys(patch) }
+        metadata:{ fields:Object.keys(patch), stage_from:lead.stage||null, stage_to:updated.stage||lead.stage||null }
       });
     } catch (error) {
       console.error('LEAD_UPDATE_AUDIT_FAILED', { code:error?.code||null, message:error?.message||'AUDIT_PERSISTENCE_ERROR', lead_id:id });
