@@ -1,0 +1,20 @@
+const assert = require('assert');
+const { normalizePatch } = require('./crm-actions');
+
+const patch = normalizePatch({
+  name: ' Cliente Teste ',
+  phone: '+55 (51) 99999-0000',
+  cnpj: '12.345.678/0001-90',
+  monthlyRevenue: '12.345,67',
+  state: 'rs',
+  ignored: 'nao-permitido'
+});
+
+assert.equal(patch.name, 'Cliente Teste');
+assert.equal(patch.phone, '5551999990000');
+assert.equal(patch.cnpj, '12345678000190');
+assert.equal(patch.monthlyRevenue, 12345.67);
+assert.equal(patch.state, 'RS');
+assert.equal(patch.ignored, undefined);
+
+console.log('PASS CRM lead edit normalization');
