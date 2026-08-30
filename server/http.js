@@ -1,6 +1,7 @@
 const http = require('http');
 const { routeRequest } = require('./routes');
 const { createProductionRuntime } = require('./runtime');
+const { route: crmActionRoute } = require('./crm-actions');
 const auth = require('./auth');
 const { appointmentsRoute } = require('../backend/appointments-api');
 
@@ -21,11 +22,14 @@ function authorized(headers={}) {
   if (!value.startsWith('Bearer ')) return false;
   return Boolean(auth.authenticate(value.slice(7)));
 }
-function withAppointmentsScript(result) {
+function withScripts(result) {
   if (!result?.raw || !Buffer.isBuffer(result.body)) return result;
   const html = result.body.toString('utf8');
-  if (!html.includes('</body>') || html.includes('/appointments.js')) return result;
-  result.body = Buffer.from(html.replace('</body>', '<script src="/appointments.js?v=20260829-1"></script></body>'), 'utf8');
+  if (!html.includes('</body>')) return result;
+  let updated = html;
+  if (!updated.includes('/appointments.js')) updated = updated.replace('</body>', '<script src="/appointments.js?v=20260829-1"></script></body>');
+  if (!updated.includes('/crm-enhancements.js')) updated = updated.replace('</body>', '<script src="/crm-enhancements.js?v=20260830-1"></script></body>');
+  result.body = Buffer.from(updated, 'utf8');
   return result;
 }
 
@@ -71,7 +75,11 @@ const server = http.createServer((req, res) => {
 
     try {
       let result;
-      if (url.pathname.startsWith('/api/crm/appointments')) {
+      if (url.pathname.startsWith('/api/crm/leads/') && (req.method === 'PATCH' || (req.method === 'POST' && url.pathname.endsWith('/messages')))) {
+        result = authorized(headers)
+          ? await crmActionRoute({ method:req.method, path:url.pathname, body })
+          : { status:401, body:{ error:'CRM_AUTH_REQUIRED' } };
+      } else if (url.pathname.startsWith('/api/crm/appointments')) {
         result = authorized(headers)
           ? await appointmentsRoute({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams.entries()), body, runtime: appointmentRuntime })
           : { status: 401, body: { error: 'CRM_AUTH_REQUIRED' } };
@@ -86,7 +94,7 @@ const server = http.createServer((req, res) => {
           headers
         });
       }
-      result = withAppointmentsScript(result);
+      result = withScripts(result);
 
       res.statusCode = result.status;
       res.setHeader('Content-Type', result.contentType || (result.text ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8'));
