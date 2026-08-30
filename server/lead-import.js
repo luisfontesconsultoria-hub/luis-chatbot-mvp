@@ -1,12 +1,13 @@
 function cleanDigits(v){return String(v??'').replace(/\D/g,'')}
 function clean(v){return v===undefined||v===null||String(v).trim()===''?null:v}
+function parseMoney(v){if(v===null||v===undefined||String(v).trim()==='')return null;const s=String(v).trim();const normalized=s.includes(',')?s.replace(/\./g,'').replace(',','.'):s;const n=Number(normalized);return Number.isFinite(n)?n:null}
 function normalizeLead(row={}){
   const p={...row};
   for(const k of ['name','phone','cnpj','companyName','tradeName','source','campaign','interest','bankCurrent','machineCurrent','monthlyRevenue','painPoint','owner','nextAction','address','city','state','zipCode','companyStatus','neighborhood','addressNumber','ddd']) p[k]=clean(p[k]);
   if(p.phone)p.phone=cleanDigits(p.phone);
   if(p.cnpj)p.cnpj=cleanDigits(p.cnpj);
   if(p.zipCode)p.zipCode=cleanDigits(p.zipCode);
-  if(p.monthlyRevenue!==null){const n=Number(String(p.monthlyRevenue).replace(',','.'));p.monthlyRevenue=Number.isFinite(n)?n:null}
+  if(p.monthlyRevenue!==null)p.monthlyRevenue=parseMoney(p.monthlyRevenue);
   return p
 }
 
@@ -31,4 +32,4 @@ async function importLeads({repository, rows=[]}={}){
   const summary={total:rows.length,created:results.filter(x=>x.status==='created').length,duplicate:results.filter(x=>x.status==='duplicate').length,rejected:results.filter(x=>x.status==='rejected').length,errors:results.filter(x=>x.status==='error').length};
   return {status:summary.errors?207:200,body:{ok:summary.errors===0,summary,results}};
 }
-module.exports={importLeads,normalizeLead};
+module.exports={importLeads,normalizeLead,parseMoney};
