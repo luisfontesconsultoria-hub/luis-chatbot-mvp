@@ -35,7 +35,7 @@ function isValidCnpj(value) {
   if (!digits || digits.length !== 14 || /^([0-9])\1+$/.test(digits)) return false;
 
   const calculateDigit = (base) => {
-    let factor = base.length - 5;
+    let factor = base.length - 7;
     let sum = 0;
     for (const char of base) {
       sum += Number(char) * factor;
