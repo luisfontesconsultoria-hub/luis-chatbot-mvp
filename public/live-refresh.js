@@ -2,22 +2,20 @@
   let timer = null;
   let busy = false;
   async function refresh() {
-    if (busy || !window.state?.token) return;
+    if (busy || !state?.token) return;
     busy = true;
     try {
-      const d = await window.api('/api/crm/leads?limit=100');
-      const previousSelected = window.state.selected?.id ? String(window.state.selected.id) : null;
-      window.state.leads = d.leads || [];
-      if (typeof window.renderDashboard === 'function') window.renderDashboard();
-      if (typeof window.renderLeads === 'function') window.renderLeads();
-      if (typeof window.renderContacts === 'function') window.renderContacts();
+      const d = await api('/api/crm/leads?limit=100');
+      const previousSelected = state.selected?.id ? String(state.selected.id) : null;
+      state.leads = d.leads || [];
+      if (typeof renderDashboard === 'function') renderDashboard();
+      if (typeof renderLeads === 'function') renderLeads();
+      if (typeof renderContacts === 'function') renderContacts();
       if (previousSelected) {
-        const updated = window.state.leads.find(x => String(x.id) === previousSelected);
+        const updated = state.leads.find(x => String(x.id) === previousSelected);
         if (updated) {
-          window.state.selected = updated;
-          if (document.querySelector('#view-inbox')?.classList.contains('active') && typeof window.showConversation === 'function') {
-            await window.showConversation(previousSelected);
-          }
+          state.selected = updated;
+          if (document.querySelector('#view-inbox')?.classList.contains('active')) await showConversation(previousSelected);
         }
       }
     } catch (_) {
