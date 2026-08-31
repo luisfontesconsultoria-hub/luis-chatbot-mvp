@@ -34,6 +34,20 @@ function createSupabaseRepository(client) {
       }
       throw retry.error||full.error;
     },
+    async createCapturedCompany(payload){
+      const allowed=['name','phone','cnpj','address','city','state','segment','whatsapp','email','source','raw_data','status','lead_id','activated_at','created_at','updated_at'];
+      const row={};
+      for(const k of allowed)if(payload?.[k]!==undefined)row[k]=payload[k];
+      const {data,error}=await client.from('captured_companies').insert(cleanRow(row)).select('*').single();
+      if(error)throw error;
+      return data;
+    },
+    async findDuplicateCompany({phone,cnpj,name,address}={}){
+      if(cnpj){const {data,error}=await client.from('captured_companies').select('*').eq('cnpj',String(cnpj).replace(/\D/g,'')).limit(1);if(error)throw error;if(data?.[0])return data[0];}
+      if(phone){const {data,error}=await client.from('captured_companies').select('*').eq('phone',String(phone).replace(/\D/g,'')).limit(1);if(error)throw error;if(data?.[0])return data[0];}
+      if(name&&address){const {data,error}=await client.from('captured_companies').select('*').eq('name',name).eq('address',address).limit(1);if(error)throw error;if(data?.[0])return data[0];}
+      return null;
+    },
     async updateLead(id,patch){const{data,error}=await client.from(TABLES.leads).update(cleanRow(toDbLead(patch))).eq('id',id).select('*').single();if(error)throw error;return fromDbLead(data)},
     async createMessage(payload){const row={lead_id:payload.lead_id,channel:payload.channel||'WHATSAPP',direction:payload.direction||'INBOUND',external_message_id:payload.external_message_id||null,text_content:payload.text_content!==undefined?payload.text_content:(payload.text||''),transcript:payload.transcript||null,metadata:payload.metadata||{}};const{data,error}=await client.from(TABLES.messages).insert(row).select('*').single();if(error)throw error;return data},
     async listMessages({leadId,limit=100}={}){const{data,error}=await client.from(TABLES.messages).select('*').eq('lead_id',leadId).order('created_at',{ascending:false}).limit(limit);if(error)throw error;return data||[]},
