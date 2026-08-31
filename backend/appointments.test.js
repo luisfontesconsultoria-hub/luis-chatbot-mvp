@@ -12,6 +12,7 @@ const confirmed=applyAppointmentOutcome({status:'AGUARDANDO_CONFIRMACAO_AGENDA'}
 assert.equal(confirmed.lead.status,'CONFIRMED');
 assert.equal(confirmed.nextAction,'REALIZAR_ATENDIMENTO');
 const converted=applyVisitOutcome({status:'CONFIRMED'},'CONVERTIDO');
-assert.equal(converted.lead.status,'CONVERTIDO');
+assert.equal(converted.lead.stage,'CONVERTIDO');
+assert.equal(converted.lead.status,'CONFIRMED','status do robô não muda com resultado de visita — só o stage comercial');
 assert.equal(converted.nextAction,'REGISTRAR_CONVERSAO');
 console.log('PASS appointments domain + lead workflow sync');
