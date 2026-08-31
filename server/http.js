@@ -3,6 +3,7 @@ const { routeRequest } = require('./routes');
 const { createProductionRuntime } = require('./runtime');
 const { route: crmActionRoute } = require('./crm-actions');
 const { importLeads } = require('./lead-import');
+const { importCompanies } = require('./captacao-import');
 const auth = require('./auth');
 const { appointmentsRoute } = require('../backend/appointments-api');
 
@@ -80,6 +81,10 @@ const server = http.createServer((req, res) => {
       if (url.pathname === '/api/crm/leads/import' && req.method === 'POST') {
         result = authorized(headers)
           ? await importLeads({ repository: appointmentRuntime.repository, rows: body?.leads })
+          : { status:401, body:{ error:'CRM_AUTH_REQUIRED' } };
+      } else if (url.pathname === '/api/captacao/import' && req.method === 'POST') {
+        result = authorized(headers)
+          ? await importCompanies({ repository: appointmentRuntime.repository, rows: body?.companies })
           : { status:401, body:{ error:'CRM_AUTH_REQUIRED' } };
       } else if (url.pathname.startsWith('/api/crm/leads/') && (req.method === 'PATCH' || (req.method === 'POST' && url.pathname.endsWith('/messages')))) {
         result = authorized(headers)
