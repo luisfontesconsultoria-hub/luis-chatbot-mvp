@@ -13,7 +13,7 @@ function clean(value) {
 function normalizePatch(body = {}) {
   const allowed = [
     'name','phone','cnpj','companyName','tradeName','interest','bankCurrent','machineCurrent',
-    'monthlyRevenue','painPoint','owner','nextAction','status','source','campaign',
+    'monthlyRevenue','painPoint','owner','nextAction','stage','source','campaign',
     'address','addressNumber','neighborhood','city','state','zipCode','companyStatus'
   ];
   const out = {};
@@ -24,14 +24,8 @@ function normalizePatch(body = {}) {
     let s = String(out.monthlyRevenue).trim();
     const hasComma = s.includes(',');
     const hasDot = s.includes('.');
-    if (hasComma && hasDot) {
-      // formato BR: ponto = milhar, vírgula = decimal (ex: "12.345,67")
-      s = s.replace(/\./g, '').replace(',', '.');
-    } else if (hasComma) {
-      // só vírgula presente: é o separador decimal (ex: "12345,67")
-      s = s.replace(',', '.');
-    }
-    // só ponto presente (ex: "12345.67") já está em formato válido, mantém como está
+    if (hasComma && hasDot) s = s.replace(/\./g, '').replace(',', '.');
+    else if (hasComma) s = s.replace(',', '.');
     const n = Number(s);
     out.monthlyRevenue = Number.isFinite(n) ? n : null;
   }
@@ -41,7 +35,6 @@ function normalizePatch(body = {}) {
 
 async function route({ method, path, body }) {
   if (!runtime.repository) return { status:503, body:{ error:'CRM_DATABASE_NOT_CONFIGURED' } };
-
   const edit = path.match(/^\/api\/crm\/leads\/([^/]+)$/);
   if (edit && method === 'PATCH') {
     const id = decodeURIComponent(edit[1]);
@@ -50,29 +43,23 @@ async function route({ method, path, body }) {
     const patch = normalizePatch(body);
     if (!Object.keys(patch).length) return { status:400, body:{ error:'NO_FIELDS_TO_UPDATE' } };
     let updated;
-    try {
-      updated = await runtime.repository.updateLead(id, patch);
-    } catch (error) {
+    try { updated = await runtime.repository.updateLead(id, patch); }
+    catch (error) {
       console.error('LEAD_UPDATE_FAILED', { code:error?.code||null, message:error?.message||'PERSISTENCE_ERROR' });
       return { status:500, body:{ error:'LEAD_UPDATE_FAILED', detail:{ code:error?.code||null, message:String(error?.message||'PERSISTENCE_ERROR').slice(0,220) } } };
     }
-    // Audit is intentionally best-effort: a healthy lead update must never be
-    // reported as failed merely because the secondary audit table is unavailable.
     try {
       await runtime.repository.createAudit({
-        lead_id:id,
-        action:'LEAD_UPDATED_MANUALLY',
-        from_status:lead.status || null,
-        to_status:updated.status || lead.status || null,
-        actor:'LUIS',
-        metadata:{ fields:Object.keys(patch) }
+        lead_id:id, action:'LEAD_UPDATED_MANUALLY',
+        from_status:lead.status || null, to_status:updated.status || lead.status || null,
+        from_stage:lead.stage || null, to_stage:updated.stage || lead.stage || null,
+        actor:'LUIS', metadata:{ fields:Object.keys(patch) }
       });
     } catch (error) {
       console.error('LEAD_UPDATE_AUDIT_FAILED', { code:error?.code||null, message:error?.message||'AUDIT_PERSISTENCE_ERROR', lead_id:id });
     }
     return { status:200, body:{ ok:true, lead:updated, audit:'BEST_EFFORT' } };
   }
-
   const send = path.match(/^\/api\/crm\/leads\/([^/]+)\/messages$/);
   if (send && method === 'POST') {
     const id = decodeURIComponent(send[1]);
@@ -85,20 +72,10 @@ async function route({ method, path, body }) {
     if (!connected) return { status:409, body:{ error:'WHATSAPP_QR_NOT_CONNECTED' } };
     const response = await qrManager.send(connected.slot, { to:lead.phone, text });
     const providerMessageId = response?.key?.id || null;
-    const saved = await runtime.repository.createMessage({
-      lead_id:id, channel:'WHATSAPP', direction:'OUTBOUND',
-      external_message_id:providerMessageId, text_content:text,
-      metadata:{ provider:'BAILEYS_QR', slot:connected.slot }
-    });
-    await runtime.repository.createEvent({
-      lead_id:id, type:'WHATSAPP_RESPONSE_SENT',
-      idempotency_key:providerMessageId ? `WHATSAPP_RESPONSE_SENT:${providerMessageId}` : null,
-      payload:{ external_message_id:providerMessageId, provider:'BAILEYS_QR', slot:connected.slot }
-    });
+    const saved = await runtime.repository.createMessage({lead_id:id, channel:'WHATSAPP', direction:'OUTBOUND', external_message_id:providerMessageId, text_content:text, metadata:{ provider:'BAILEYS_QR', slot:connected.slot }});
+    await runtime.repository.createEvent({lead_id:id, type:'WHATSAPP_RESPONSE_SENT', idempotency_key:providerMessageId ? `WHATSAPP_RESPONSE_SENT:${providerMessageId}` : null, payload:{ external_message_id:providerMessageId, provider:'BAILEYS_QR', slot:connected.slot }});
     return { status:201, body:{ ok:true, message:saved } };
   }
-
   return { status:404, body:{ error:'CRM_ACTION_ROUTE_NOT_FOUND' } };
 }
-
 module.exports = { route, normalizePatch };
