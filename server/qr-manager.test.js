@@ -1,10 +1,15 @@
-const assert=require('assert');const {jidToPhone,extractInboundPhone,slotId,isSessionStale,STALE_SESSION_TIMEOUT_MS,backoffDelay,MAX_AUTO_RECONNECT_ATTEMPTS,nextReconnectAttempt,resetReconnectAttempts}=require('./qr-manager');
+const assert=require('assert');const {jidToPhone,extractInboundPhone,resolveMessagePhone,slotId,isSessionStale,STALE_SESSION_TIMEOUT_MS,backoffDelay,MAX_AUTO_RECONNECT_ATTEMPTS,nextReconnectAttempt,resetReconnectAttempts}=require('./qr-manager');
 assert.strictEqual(slotId(1),1);assert.strictEqual(slotId('4'),4);assert.throws(()=>slotId(0),/INVALID_SLOT/);assert.throws(()=>slotId(5),/INVALID_SLOT/);
 assert.strictEqual(jidToPhone('5511999999999@s.whatsapp.net'),'5511999999999');
 assert.strictEqual(jidToPhone('123456@lid'),null);
 assert.strictEqual(extractInboundPhone({remoteJid:'12345@lid',remoteJidAlt:'5511999999999@s.whatsapp.net'}),'5511999999999');
 assert.strictEqual(extractInboundPhone({remoteJid:'5511888888888@s.whatsapp.net'}),'5511888888888');
 assert.strictEqual(extractInboundPhone({remoteJid:'12345@lid'}),null);
+(async()=>{
+assert.strictEqual(await resolveMessagePhone({remoteJid:'5511888888888@s.whatsapp.net'},null),'5511888888888');
+const fakeSocket={signalRepository:{lidMapping:{getPNForLID:async jid=>jid==='12345@lid'?'5511999999999@s.whatsapp.net':null}}};
+assert.strictEqual(await resolveMessagePhone({remoteJid:'12345@lid'},fakeSocket),'5511999999999');
+assert.strictEqual(await resolveMessagePhone({remoteJid:'99999@lid'},fakeSocket),null);
 const now=Date.now();
 assert.strictEqual(isSessionStale(null,now),false);
 assert.strictEqual(isSessionStale({status:'CONNECTED',startedAt:now-999999},now),false);
@@ -19,12 +24,6 @@ assert.strictEqual(backoffDelay(3),20000);
 assert.strictEqual(backoffDelay(6),60000);
 assert.strictEqual(backoffDelay(20),60000);
 assert.ok(MAX_AUTO_RECONNECT_ATTEMPTS>=1&&MAX_AUTO_RECONNECT_ATTEMPTS<=10);
-// BUG REAL DE PRODUÇÃO (31/08): connect() recria a sessão do zero a cada tentativa, então
-// guardar o contador dentro do objeto de sessão sempre voltava pra 0 — o backoff nunca
-// crescia (ficava travado em ~5s pra sempre, confirmado nos logs do Render) e nunca
-// desistia. Corrigido guardando o contador num Map à parte que sobrevive à recriação
-// da sessão. Este teste reproduz exatamente a sequência de "connection.update close"
-// que aconteceu em loop real.
 const slot='qr-manager-test-slot';
 resetReconnectAttempts(slot);
 let r=nextReconnectAttempt(slot);
@@ -41,3 +40,4 @@ resetReconnectAttempts(slot);
 r=nextReconnectAttempt(slot);
 assert.strictEqual(r.attempt,1,'depois de um reset (sucesso real: QR emitido ou conexão aberta), volta pro início');
 console.log('qr-manager tests passed');
+})().catch(error=>{console.error(error);process.exit(1)});
