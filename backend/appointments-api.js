@@ -9,27 +9,12 @@ async function syncLeadFromAppointment(runtime, appointment, previous = {}) {
   if (appointment.status === 'REALIZADO') {
     outcome = applyVisitOutcome(lead, appointment.visitResult || appointment.result || null);
   } else {
-    outcome = applyAppointmentOutcome(lead, {
-      confirmed: appointment.status === 'CONFIRMED',
-      mode: appointment.type || appointment.mode || 'PRESENCIAL'
-    });
+    outcome = applyAppointmentOutcome(lead, { confirmed: appointment.status === 'CONFIRMED', mode: appointment.type || appointment.mode || 'PRESENCIAL' });
   }
-  const fields = {
-    status: outcome.lead.status,
-    appointmentId: appointment.appointmentId,
-    nextAction: outcome.nextAction,
-    updatedAt: new Date().toISOString()
-  };
+  const fields = { status: outcome.lead.status, stage: outcome.lead.stage, appointmentId: appointment.appointmentId, nextAction: outcome.nextAction, updatedAt: new Date().toISOString() };
   const updated = await runtime.repository.updateLead(appointment.leadId, fields);
   try {
-    await runtime.repository.createAudit({
-      lead_id: appointment.leadId,
-      action: 'APPOINTMENT_SYNC',
-      from_status: previous.status || lead.status || 'NEW',
-      to_status: updated.status,
-      actor: 'LUIS',
-      metadata: { appointmentId: appointment.appointmentId, appointmentStatus: appointment.status, nextAction: outcome.nextAction }
-    });
+    await runtime.repository.createAudit({ lead_id: appointment.leadId, action: 'APPOINTMENT_SYNC', from_status: previous.status || lead.status || 'NEW', to_status: updated.status, from_stage: previous.stage || lead.stage || lead.status || 'NEW', to_stage: updated.stage, actor: 'LUIS', metadata: { appointmentId: appointment.appointmentId, appointmentStatus: appointment.status, nextAction: outcome.nextAction } });
   } catch (e) { console.error('APPOINTMENT_SYNC_AUDIT_FAILED', e?.message || e); }
   return updated;
 }
