@@ -7,7 +7,7 @@ const LEAD_TO_DB = Object.freeze({
   id:'id', name:'name', companyName:'company_name', phone:'phone', cnpj:'cnpj',
   source:'source', campaign:'campaign', interest:'product_interest', productInterest:'product_interest',
   bankCurrent:'bank_current', machineCurrent:'machine_current', monthlyRevenue:'monthly_revenue',
-  painPoint:'pain_point', status:'status', owner:'owner', nextAction:'next_action',
+  painPoint:'pain_point', status:'status', stage:'stage', owner:'owner', nextAction:'next_action',
   updatedAt:'updated_at', companyStatus:'company_status', tradeName:'trade_name',
   neighborhood:'neighborhood', addressNumber:'address_number', address:'address', city:'city',
   state:'state', zipCode:'zip_code'
