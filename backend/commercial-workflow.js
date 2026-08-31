@@ -3,23 +3,23 @@ const { appointmentToPipelineStatus, visitResultToStatus, scoreLead, priority } 
 
 function applyAppointmentOutcome(lead={}, appointment={}) {
   const status = appointmentToPipelineStatus({ confirmed: Boolean(appointment.confirmed), mode: appointment.mode || 'PRESENCIAL' });
-  const next = { ...lead, status };
+  const next = { ...lead, status, stage: status };
   const score = scoreLead(next);
   return { lead: next, score, priority: priority(score), nextAction: appointment.confirmed ? 'REALIZAR_ATENDIMENTO' : 'AGUARDAR_CONFIRMACAO' };
 }
 
 function applyVisitOutcome(lead={}, result) {
-  const status = visitResultToStatus(result);
-  if (!status) return { lead: { ...lead }, changed: false, score: scoreLead(lead), priority: priority(scoreLead(lead)), nextAction: null };
-  const next = { ...lead, status };
+  const stage = visitResultToStatus(result);
+  if (!stage) return { lead: { ...lead }, changed: false, score: scoreLead(lead), priority: priority(scoreLead(lead)), nextAction: null };
+  const next = { ...lead, stage };
   const score = scoreLead(next);
-  const nextAction = status === 'AGUARDANDO_RETORNO' ? 'FAZER_FOLLOW_UP' : status === 'CONVERTIDO' ? 'REGISTRAR_CONVERSAO' : 'ENCERRAR_OPORTUNIDADE';
+  const nextAction = stage === 'AGUARDANDO_RETORNO' ? 'FAZER_FOLLOW_UP' : stage === 'CONVERTIDO' ? 'REGISTRAR_CONVERSAO' : 'ENCERRAR_OPORTUNIDADE';
   return { lead: next, changed: true, score, priority: priority(score), nextAction };
 }
 
 function summarizeWorkflow(lead={}) {
   const score = scoreLead(lead);
-  return { status: lead.status || 'NEW', score, priority: priority(score), nextAction: lead.nextAction || null, appointmentId: lead.appointmentId || null, routeId: lead.routeId || null };
+  return { status: lead.status || 'NEW', stage: lead.stage || lead.status || 'NEW', score, priority: priority(score), nextAction: lead.nextAction || null, appointmentId: lead.appointmentId || null, routeId: lead.routeId || null };
 }
 
 module.exports = { applyAppointmentOutcome, applyVisitOutcome, summarizeWorkflow };
