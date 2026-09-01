@@ -9,9 +9,11 @@ function getConfig(env = process.env) {
   const aiProvider = String(env.AI_PROVIDER || 'gemini').trim().toLowerCase();
   const aiKey = aiProvider === 'gemini'
     ? env.GEMINI_API_KEY
-    : aiProvider === 'ollama'
-      ? true
-      : null;
+    : aiProvider === 'openai'
+      ? env.OPENAI_API_KEY
+      : aiProvider === 'ollama'
+        ? true
+        : null;
   const aiConfigured = Boolean(aiKey);
   const aiFlag = String(env.AI_ASSIST_ENABLED ?? (aiConfigured ? 'true' : 'false')).toLowerCase();
 
@@ -30,6 +32,9 @@ function getConfig(env = process.env) {
     aiAssistEnabled: aiFlag === 'true',
     geminiApiKey: env.GEMINI_API_KEY || null,
     geminiModel: env.GEMINI_MODEL || 'gemini-2.5-flash',
+    openaiApiKey: env.OPENAI_API_KEY || null,
+    openaiModel: env.OPENAI_MODEL || 'gpt-5.6-luna',
+    openaiBaseUrl: env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
     ollamaBaseUrl: env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434',
     ollamaModel: env.OLLAMA_MODEL || 'gemma3:4b'
   });
