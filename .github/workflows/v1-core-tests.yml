@@ -15,6 +15,10 @@ jobs:
           node-version: 20.19.0
           cache: npm
       - run: npm install --no-audit --no-fund
+      - name: Run Captacao V1 import test
+        run: node server/captacao-import.test.js
+      - name: Run Captacao V1 smoke test
+        run: node server/captacao-v1-smoke.test.js
       - name: Run SDR regression tests
         run: node backend/core/pipeline.test.js
       - name: Run decision contract tests
