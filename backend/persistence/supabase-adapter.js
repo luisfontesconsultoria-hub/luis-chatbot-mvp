@@ -10,44 +10,12 @@ function createSupabaseRepository(client) {
     async listLeads({limit=50,source,status,stage}={}){let q=client.from(TABLES.leads).select('*').limit(limit);if(source)q=q.eq('source',source);if(status)q=q.eq('status',status);if(stage)q=q.eq('stage',stage);const{data,error}=await q;if(error)throw error;return(data||[]).map(fromDbLead)},
     async getLead(id){const{data,error}=await client.from(TABLES.leads).select('*').eq('id',id).single();if(error&&error.code!=='PGRST116')throw error;return data?fromDbLead(data):null},
     async findOrCreateLeadByPhone(phone,defaults={}){if(!phone)throw new Error('PHONE_REQUIRED');const normalized=String(phone).replace(/\D/g,'');const{data:existing,error}=await client.from(TABLES.leads).select('*').eq('phone',normalized).limit(1);if(error)throw error;if(existing&&existing[0]){const lead=fromDbLead(existing[0]);if(!lead.name&&defaults.name){try{return await this.updateLead(existing[0].id,{name:defaults.name})}catch{}}return lead}return this.createLead({phone:normalized,source:defaults.source||'WHATSAPP',name:defaults.name||null})},
-    async createLead(payload){
-      const row=cleanRow(toDbLead(payload));
-      const full=await client.from(TABLES.leads).insert(row).select('*').single();
-      if(!full.error)return fromDbLead(full.data);
-      if(full.error.code==='23505'){
-        const phone=row.phone?String(row.phone).replace(/\D/g,''):'';const cnpj=row.cnpj?String(row.cnpj).replace(/\D/g,''):'';let existing=null;
-        if(phone){const r=await client.from(TABLES.leads).select('*').eq('phone',phone).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
-        if(!existing&&cnpj){const r=await client.from(TABLES.leads).select('*').eq('cnpj',cnpj).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
-        if(existing)return fromDbLead(existing);
-      }
-      const base=baseLeadRow(row);
-      const retry=await client.from(TABLES.leads).insert(base).select('*').single();
-      if(!retry.error){
-        const optional=optionalLeadRow(row);if(Object.keys(optional).length){try{const updated=await client.from(TABLES.leads).update(optional).eq('id',retry.data.id).select('*').single();if(!updated.error)return fromDbLead(updated.data)}catch{}}
-        return fromDbLead(retry.data);
-      }
-      if(retry.error?.code==='23505'){
-        const phone=base.phone?String(base.phone).replace(/\D/g,''):'';const cnpj=base.cnpj?String(base.cnpj).replace(/\D/g,''):'';let existing=null;
-        if(phone){const r=await client.from(TABLES.leads).select('*').eq('phone',phone).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
-        if(!existing&&cnpj){const r=await client.from(TABLES.leads).select('*').eq('cnpj',cnpj).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}
-        if(existing)return fromDbLead(existing);
-      }
-      throw retry.error||full.error;
-    },
-    async createCapturedCompany(payload){
-      const allowed=['name','phone','cnpj','address','city','state','segment','whatsapp','email','source','raw_data','status','lead_id','activated_at','created_at','updated_at'];
-      const row={};
-      for(const k of allowed)if(payload?.[k]!==undefined)row[k]=payload[k];
-      const {data,error}=await client.from('captured_companies').insert(cleanRow(row)).select('*').single();
-      if(error)throw error;
-      return data;
-    },
-    async findDuplicateCompany({phone,cnpj,name,address}={}){
-      if(cnpj){const {data,error}=await client.from('captured_companies').select('*').eq('cnpj',String(cnpj).replace(/\D/g,'')).limit(1);if(error)throw error;if(data?.[0])return data[0];}
-      if(phone){const {data,error}=await client.from('captured_companies').select('*').eq('phone',String(phone).replace(/\D/g,'')).limit(1);if(error)throw error;if(data?.[0])return data[0];}
-      if(name&&address){const {data,error}=await client.from('captured_companies').select('*').eq('name',name).eq('address',address).limit(1);if(error)throw error;if(data?.[0])return data[0];}
-      return null;
-    },
+    async createLead(payload){const row=cleanRow(toDbLead(payload));const full=await client.from(TABLES.leads).insert(row).select('*').single();if(!full.error)return fromDbLead(full.data);if(full.error.code==='23505'){const phone=row.phone?String(row.phone).replace(/\D/g,''):'';const cnpj=row.cnpj?String(row.cnpj).replace(/\D/g,''):'';let existing=null;if(phone){const r=await client.from(TABLES.leads).select('*').eq('phone',phone).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}if(!existing&&cnpj){const r=await client.from(TABLES.leads).select('*').eq('cnpj',cnpj).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}if(existing)return fromDbLead(existing)}const base=baseLeadRow(row);const retry=await client.from(TABLES.leads).insert(base).select('*').single();if(!retry.error){const optional=optionalLeadRow(row);if(Object.keys(optional).length){try{const updated=await client.from(TABLES.leads).update(optional).eq('id',retry.data.id).select('*').single();if(!updated.error)return fromDbLead(updated.data)}catch{}}return fromDbLead(retry.data)}if(retry.error?.code==='23505'){const phone=base.phone?String(base.phone).replace(/\D/g,''):'';const cnpj=base.cnpj?String(base.cnpj).replace(/\D/g,''):'';let existing=null;if(phone){const r=await client.from(TABLES.leads).select('*').eq('phone',phone).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}if(!existing&&cnpj){const r=await client.from(TABLES.leads).select('*').eq('cnpj',cnpj).limit(1);if(!r.error&&r.data?.[0])existing=r.data[0]}if(existing)return fromDbLead(existing)}throw retry.error||full.error},
+    async createCapturedCompany(payload){const allowed=['name','phone','cnpj','address','city','state','segment','whatsapp','email','source','raw_data','status','lead_id','activated_at','created_at','updated_at'];const row={};for(const k of allowed)if(payload?.[k]!==undefined)row[k]=payload[k];const{data,error}=await client.from(TABLES.capturedCompanies).insert(cleanRow(row)).select('*').single();if(error)throw error;return data},
+    async listCapturedCompanies({limit=100,status,source}={}){let q=client.from(TABLES.capturedCompanies).select('*').order('created_at',{ascending:false}).limit(limit);if(status)q=q.eq('status',status);if(source)q=q.eq('source',source);const{data,error}=await q;if(error)throw error;return data||[]},
+    async findDuplicateCompany({phone,cnpj,name,address}={}){if(cnpj){const{data,error}=await client.from(TABLES.capturedCompanies).select('*').eq('cnpj',String(cnpj).replace(/\D/g,'')).limit(1);if(error)throw error;if(data?.[0])return data[0]}if(phone){const{data,error}=await client.from(TABLES.capturedCompanies).select('*').eq('phone',String(phone).replace(/\D/g,'')).limit(1);if(error)throw error;if(data?.[0])return data[0]}if(name&&address){const{data,error}=await client.from(TABLES.capturedCompanies).select('*').eq('name',name).eq('address',address).limit(1);if(error)throw error;if(data?.[0])return data[0]}return null},
+    async getCapturedCompany(id){const{data,error}=await client.from(TABLES.capturedCompanies).select('*').eq('id',id).single();if(error&&error.code!=='PGRST116')throw error;return data||null},
+    async updateCapturedCompany(id,patch){const allowed=['name','phone','cnpj','address','city','state','segment','whatsapp','email','source','raw_data','status','lead_id','activated_at','created_at','updated_at'];const row={};for(const k of allowed)if(patch?.[k]!==undefined)row[k]=patch[k];const{data,error}=await client.from(TABLES.capturedCompanies).update(cleanRow(row)).eq('id',id).select('*').single();if(error)throw error;return data},
     async updateLead(id,patch){const{data,error}=await client.from(TABLES.leads).update(cleanRow(toDbLead(patch))).eq('id',id).select('*').single();if(error)throw error;return fromDbLead(data)},
     async createMessage(payload){const row={lead_id:payload.lead_id,channel:payload.channel||'WHATSAPP',direction:payload.direction||'INBOUND',external_message_id:payload.external_message_id||null,text_content:payload.text_content!==undefined?payload.text_content:(payload.text||''),transcript:payload.transcript||null,metadata:payload.metadata||{}};const{data,error}=await client.from(TABLES.messages).insert(row).select('*').single();if(error)throw error;return data},
     async listMessages({leadId,limit=100}={}){const{data,error}=await client.from(TABLES.messages).select('*').eq('lead_id',leadId).order('created_at',{ascending:false}).limit(limit);if(error)throw error;return data||[]},
