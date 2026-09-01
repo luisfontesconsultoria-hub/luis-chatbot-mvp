@@ -25,4 +25,10 @@ const local = getConfig({ AI_PROVIDER:'ollama', AI_ASSIST_ENABLED:'true', OLLAMA
 assert.equal(local.aiProvider, 'ollama');
 assert.equal(local.aiConfigured, true);
 assert.equal(local.ollamaModel, 'gemma-test');
+const openai = getConfig({ AI_PROVIDER:'openai', AI_ASSIST_ENABLED:'true', OPENAI_API_KEY:'key', OPENAI_MODEL:'gpt-test', OPENAI_BASE_URL:'https://example.test/v1' });
+assert.equal(openai.aiProvider, 'openai');
+assert.equal(openai.aiConfigured, true);
+assert.equal(openai.openaiApiKey, 'key');
+assert.equal(openai.openaiModel, 'gpt-test');
+assert.equal(openai.openaiBaseUrl, 'https://example.test/v1');
 console.log('PASS production environment aliases and AI providers');
