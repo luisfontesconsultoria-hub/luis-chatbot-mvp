@@ -5,13 +5,19 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
   return async function process(messages=[]) {
     const results=[];
     for (const message of messages) {
-      if (!message?.phone) { results.push({status:'ignored',reason:'PHONE_REQUIRED'}); continue; }
-      const key=message.external_message_id||`${message.phone}:${message.timestamp}:${message.text||''}`;
+      const whatsappJid=message?.whatsapp_jid||message?.whatsappJid||null;
+      if (!message?.phone && !whatsappJid) { results.push({status:'ignored',reason:'WHATSAPP_IDENTITY_REQUIRED'}); continue; }
+      const identity=message.phone||whatsappJid;
+      const key=message.external_message_id||`${identity}:${message.timestamp}:${message.text||''}`;
       if (idempotency.has(key)) { results.push({status:'duplicate',key}); continue; }
       try {
-        const lead=await repository.findOrCreateLeadByPhone(message.phone,{source:message.source||'WHATSAPP',name:message.name||null});
+        const defaults={source:message.source||'WHATSAPP',name:message.name||null};
+        const lead=typeof repository.findOrCreateLeadByWhatsappIdentity==='function'
+          ? await repository.findOrCreateLeadByWhatsappIdentity({phone:message.phone||null,jid:whatsappJid},defaults)
+          : await repository.findOrCreateLeadByPhone(message.phone,defaults);
+        if(whatsappJid)lead.whatsappJid=whatsappJid;
         try {
-          await repository.createEvent({lead_id:lead.id,type:'WHATSAPP_INBOUND',idempotency_key:key,payload:{external_message_id:key,type:message.type||'text',timestamp:message.timestamp||null}});
+          await repository.createEvent({lead_id:lead.id,type:'WHATSAPP_INBOUND',idempotency_key:key,payload:{external_message_id:key,type:message.type||'text',timestamp:message.timestamp||null,whatsapp_jid:whatsappJid}});
           idempotency.mark(key);
         } catch(error) {
           if(isDuplicateError(error)){ idempotency.mark(key); results.push({status:'duplicate',key,lead_id:lead.id}); continue; }
@@ -19,7 +25,7 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
         }
         let saved;
         try {
-          saved=await repository.createMessage({lead_id:lead.id,channel:message.channel||'WHATSAPP',direction:'INBOUND',external_message_id:message.external_message_id||key,text_content:message.text||'',transcript:message.transcript||null,metadata:{type:message.type||'text',media_url:message.media_url||null,source:message.source||'WHATSAPP',campaign:message.campaign||null,timestamp:message.timestamp||null}});
+          saved=await repository.createMessage({lead_id:lead.id,channel:message.channel||'WHATSAPP',direction:'INBOUND',external_message_id:message.external_message_id||key,text_content:message.text||'',transcript:message.transcript||null,metadata:{type:message.type||'text',media_url:message.media_url||null,source:message.source||'WHATSAPP',campaign:message.campaign||null,timestamp:message.timestamp||null,whatsapp_jid:whatsappJid}});
         } catch(error) {
           if(!isDuplicateError(error)) throw error;
           results.push({status:'duplicate',key,lead_id:lead.id}); continue;
