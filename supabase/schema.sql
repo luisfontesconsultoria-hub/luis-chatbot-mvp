@@ -2,7 +2,7 @@
 create extension if not exists pgcrypto;
 
 create table if not exists public.leads (
-  id uuid primary key default gen_random_uuid(), name text, phone text not null,
+  id uuid primary key default gen_random_uuid(), name text, phone text, whatsapp_jid text,
   company_name text, cnpj text, source text not null default 'WHATSAPP', campaign text,
   product_interest text, bank_current text, machine_current text, monthly_revenue numeric,
   pain_point text, status text not null default 'NEW', owner text default 'LUIS',
@@ -10,6 +10,8 @@ create table if not exists public.leads (
   latitude double precision, longitude double precision, location_source text, company_status text,
   created_at timestamptz not null default now(), updated_at timestamptz not null default now(), unique(phone), unique(cnpj)
 );
+alter table public.leads add column if not exists whatsapp_jid text;
+alter table public.leads alter column phone drop not null;
 alter table public.leads add column if not exists address text;
 alter table public.leads add column if not exists city text;
 alter table public.leads add column if not exists state text;
@@ -18,6 +20,7 @@ alter table public.leads add column if not exists latitude double precision;
 alter table public.leads add column if not exists longitude double precision;
 alter table public.leads add column if not exists location_source text;
 alter table public.leads add column if not exists company_status text;
+create unique index if not exists leads_whatsapp_jid_uidx on public.leads(whatsapp_jid) where whatsapp_jid is not null;
 
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(), lead_id uuid not null references public.leads(id) on delete cascade,
