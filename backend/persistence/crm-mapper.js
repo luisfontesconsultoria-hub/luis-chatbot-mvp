@@ -4,7 +4,7 @@
  * rename these without checking the live schema first.
  */
 const LEAD_TO_DB = Object.freeze({
-  id:'id', name:'name', companyName:'company_name', phone:'phone', cnpj:'cnpj',
+  id:'id', name:'name', companyName:'company_name', phone:'phone', whatsappJid:'whatsapp_jid', cnpj:'cnpj',
   source:'source', campaign:'campaign', interest:'product_interest', productInterest:'product_interest',
   bankCurrent:'bank_current', machineCurrent:'machine_current', monthlyRevenue:'monthly_revenue',
   painPoint:'pain_point', status:'status', stage:'stage', owner:'owner', nextAction:'next_action',
