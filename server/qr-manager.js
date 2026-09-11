@@ -10,7 +10,7 @@ const MAX_AUTO_RECONNECT_ATTEMPTS=6;
 function backoffDelay(retryCount){return Math.min(2500*Math.pow(2,retryCount),60000)}
 function nextReconnectAttempt(id){const n=(retryCounts.get(id)||0)+1;retryCounts.set(id,n);return{attempt:n,delay:backoffDelay(n),exceeded:n>MAX_AUTO_RECONNECT_ATTEMPTS}}
 function resetReconnectAttempts(id){retryCounts.delete(id)}
-function shouldProcessUpsert(type,requestId){return type==='notify'&&!requestId}
+function shouldProcessUpsert(type,requestId){return type==='notify'}
 function scheduleReconnect(id,repository,env,delay=800){const current=sessions.get(id);if(!current||current.reconnectTimer||current.stopped)return;current.reconnectTimer=setTimeout(()=>{current.reconnectTimer=null;if(sessions.get(id)===current)sessions.delete(id);connect(id,{repository,env}).catch(e=>{const s=sessions.get(id);if(s){s.status='ERROR';s.lastError=e.message}})},delay)}
 function messageText(message={}){return message?.conversation||message?.extendedTextMessage?.text||message?.imageMessage?.caption||message?.videoMessage?.caption||message?.documentMessage?.caption||''}
 function messageTimestamp(value){if(value===undefined||value===null)return new Date().toISOString();const n=Number(value);return Number.isFinite(n)&&n>0?new Date(n*1000).toISOString():new Date().toISOString()}
