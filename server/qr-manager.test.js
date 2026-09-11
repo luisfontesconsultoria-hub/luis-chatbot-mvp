@@ -1,7 +1,12 @@
-const assert=require('assert');const {jidToPhone,extractInboundPhone,resolveMessagePhone,slotId,isSessionStale,STALE_SESSION_TIMEOUT_MS,backoffDelay,MAX_AUTO_RECONNECT_ATTEMPTS,nextReconnectAttempt,resetReconnectAttempts,shouldProcessUpsert}=require('./qr-manager');
+const assert=require('assert');
+const {jidToPhone,normalizeIndividualJid,extractInboundJid,extractInboundPhone,resolveMessageIdentity,resolveMessagePhone,slotId,isSessionStale,STALE_SESSION_TIMEOUT_MS,backoffDelay,MAX_AUTO_RECONNECT_ATTEMPTS,nextReconnectAttempt,resetReconnectAttempts,shouldProcessUpsert}=require('./qr-manager');
 assert.strictEqual(slotId(1),1);assert.strictEqual(slotId('4'),4);assert.throws(()=>slotId(0),/INVALID_SLOT/);assert.throws(()=>slotId(5),/INVALID_SLOT/);
 assert.strictEqual(jidToPhone('5511999999999@s.whatsapp.net'),'5511999999999');
 assert.strictEqual(jidToPhone('123456@lid'),null);
+assert.strictEqual(normalizeIndividualJid('123456@lid'),'123456@lid');
+assert.strictEqual(normalizeIndividualJid('5511999999999@s.whatsapp.net'),'5511999999999@s.whatsapp.net');
+assert.strictEqual(normalizeIndividualJid('status@broadcast'),null);
+assert.strictEqual(extractInboundJid({remoteJid:'12345@lid'}),'12345@lid');
 assert.strictEqual(extractInboundPhone({remoteJid:'12345@lid',participantPn:'5511777777777@s.whatsapp.net'}),'5511777777777');
 assert.strictEqual(shouldProcessUpsert('notify',null),true);
 assert.strictEqual(shouldProcessUpsert('notify','req-1'),true);
@@ -15,6 +20,8 @@ assert.strictEqual(await resolveMessagePhone({remoteJid:'5511888888888@s.whatsap
 const fakeSocket={signalRepository:{lidMapping:{getPNForLID:async jid=>jid==='12345@lid'?'5511999999999@s.whatsapp.net':null}}};
 assert.strictEqual(await resolveMessagePhone({remoteJid:'12345@lid'},fakeSocket),'5511999999999');
 assert.strictEqual(await resolveMessagePhone({remoteJid:'99999@lid'},fakeSocket),null);
+assert.deepStrictEqual(await resolveMessageIdentity({remoteJid:'99999@lid'},fakeSocket),{phone:null,jid:'99999@lid'});
+assert.deepStrictEqual(await resolveMessageIdentity({remoteJid:'12345@lid'},fakeSocket),{phone:'5511999999999',jid:'12345@lid'});
 const now=Date.now();
 assert.strictEqual(isSessionStale(null,now),false);
 assert.strictEqual(isSessionStale({status:'CONNECTED',startedAt:now-999999},now),false);
