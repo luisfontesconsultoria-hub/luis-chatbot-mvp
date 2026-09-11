@@ -1,7 +1,11 @@
-const assert=require('assert');const {jidToPhone,extractInboundPhone,resolveMessagePhone,slotId,isSessionStale,STALE_SESSION_TIMEOUT_MS,backoffDelay,MAX_AUTO_RECONNECT_ATTEMPTS,nextReconnectAttempt,resetReconnectAttempts}=require('./qr-manager');
+const assert=require('assert');const {jidToPhone,extractInboundPhone,resolveMessagePhone,slotId,isSessionStale,STALE_SESSION_TIMEOUT_MS,backoffDelay,MAX_AUTO_RECONNECT_ATTEMPTS,nextReconnectAttempt,resetReconnectAttempts,shouldProcessUpsert}=require('./qr-manager');
 assert.strictEqual(slotId(1),1);assert.strictEqual(slotId('4'),4);assert.throws(()=>slotId(0),/INVALID_SLOT/);assert.throws(()=>slotId(5),/INVALID_SLOT/);
 assert.strictEqual(jidToPhone('5511999999999@s.whatsapp.net'),'5511999999999');
 assert.strictEqual(jidToPhone('123456@lid'),null);
+assert.strictEqual(extractInboundPhone({remoteJid:'12345@lid',participantPn:'5511777777777@s.whatsapp.net'}),'5511777777777');
+assert.strictEqual(shouldProcessUpsert('notify',null),true);
+assert.strictEqual(shouldProcessUpsert('append','req-1'),true);
+assert.strictEqual(shouldProcessUpsert('append',null),false);
 assert.strictEqual(extractInboundPhone({remoteJid:'12345@lid',remoteJidAlt:'5511999999999@s.whatsapp.net'}),'5511999999999');
 assert.strictEqual(extractInboundPhone({remoteJid:'5511888888888@s.whatsapp.net'}),'5511888888888');
 assert.strictEqual(extractInboundPhone({remoteJid:'12345@lid'}),null);
