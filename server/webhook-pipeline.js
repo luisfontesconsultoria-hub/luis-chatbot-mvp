@@ -15,8 +15,12 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
       const key=message.external_message_id||`${identity}:${message.timestamp}:${message.text||''}`;
       if (!resume && idempotency.has(key)) { results.push({status:'duplicate',key}); continue; }
       try {
+        let atomic=null;
         if(typeof repository.ingestInboundMessage==='function'){
-          const atomic=await repository.ingestInboundMessage({...message,whatsapp_jid:whatsappJid,external_message_id:key});
+          try{atomic=await repository.ingestInboundMessage({...message,whatsapp_jid:whatsappJid,external_message_id:key})}
+          catch(error){if(error?.code!=='ATOMIC_INGEST_UNAVAILABLE')throw error}
+        }
+        if(atomic){
           if(atomic.duplicate){
             idempotency.mark(key);
             if(resume){const sdrDone=await sdrAlreadyProcessed(repository,atomic.lead.id,key);if(!sdrDone)await repository.createEvent({lead_id:atomic.lead.id,type:'SPOOL_REPLAY_NEEDS_HUMAN',idempotency_key:`spool-needs-human:${key}`,payload:{external_message_id:key,reason:'INBOUND_SAVED_BUT_SDR_NOT_CONFIRMED'}});results.push({status:'duplicate',key,lead_id:atomic.lead.id,needsHuman:!sdrDone});continue}

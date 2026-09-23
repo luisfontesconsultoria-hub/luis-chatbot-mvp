@@ -68,3 +68,6 @@ $$;
 
 revoke all on function public.crm_ingest_whatsapp_inbound(text,text,text,text,text,text,timestamptz,jsonb) from public, anon, authenticated;
 grant execute on function public.crm_ingest_whatsapp_inbound(text,text,text,text,text,text,timestamptz,jsonb) to service_role;
+
+-- Recarrega o cache de schema do PostgREST para a RPC ficar visível imediatamente.
+notify pgrst, 'reload schema';

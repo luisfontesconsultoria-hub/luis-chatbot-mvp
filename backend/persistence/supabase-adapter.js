@@ -6,8 +6,13 @@ function normalizePhone(value){const v=String(value||'').replace(/\D/g,'');retur
 function normalizeJid(value){const v=String(value||'').trim().toLowerCase();return v&&v.includes('@')?v:null}
 function baseLeadRow(row){const allowed=['name','company_name','phone','whatsapp_jid','cnpj','source','campaign','product_interest','bank_current','machine_current','monthly_revenue','pain_point','status','stage','owner','next_action','address','city','state','zip_code'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
 function optionalLeadRow(row){const allowed=['updated_at','company_status','trade_name','neighborhood','address_number'];const out={};for(const k of allowed)if(row[k]!==undefined)out[k]=row[k];return cleanRow(out)}
+const ATOMIC_RECHECK_MS=5*60*1000;
+function atomicEnabled(env=process.env){return!['off','false','0'].includes(String(env.CRM_ATOMIC_INBOUND||'').trim().toLowerCase())}
+function isMissingFunctionError(error){const code=String(error?.code||'');return code==='PGRST202'||code==='42883'||/could not find the function|function .*crm_ingest_whatsapp_inbound.* does not exist/i.test(String(error?.message||''))}
+function atomicUnavailable(){const e=new Error('ATOMIC_INGEST_UNAVAILABLE');e.code='ATOMIC_INGEST_UNAVAILABLE';return e}
 function createSupabaseRepository(client) {
   if (!client || typeof client.from !== 'function') throw new Error('SUPABASE_CLIENT_REQUIRED');
+  let atomicUnavailableUntil=0;
   const repo={
     async listLeads({limit=50,source,status,stage}={}){let q=client.from(TABLES.leads).select('*').limit(limit);if(source)q=q.eq('source',source);if(status)q=q.eq('status',status);if(stage)q=q.eq('stage',stage);const{data,error}=await q;if(error)throw error;return(data||[]).map(fromDbLead)},
     async getLead(id){const{data,error}=await client.from(TABLES.leads).select('*').eq('id',id).single();if(error&&error.code!=='PGRST116')throw error;return data?fromDbLead(data):null},
@@ -22,11 +27,13 @@ function createSupabaseRepository(client) {
     },
     async findOrCreateLeadByPhone(phone,defaults={}){const normalized=normalizePhone(phone);if(!normalized)throw new Error('PHONE_REQUIRED');return this.findOrCreateLeadByWhatsappIdentity({phone:normalized},defaults)},
     async ingestInboundMessage(message={}){
-      if(typeof client.rpc!=='function')throw new Error('SUPABASE_RPC_REQUIRED');
+      // RPC atômica é opcional: se a migration 20260923 ainda não foi aplicada (PGRST202/42883)
+      // ou se CRM_ATOMIC_INBOUND=off, sinaliza ATOMIC_INGEST_UNAVAILABLE e o pipeline usa o caminho legado.
+      if(!atomicEnabled()||typeof client.rpc!=='function'||Date.now()<atomicUnavailableUntil)throw atomicUnavailable();
       const externalId=String(message.external_message_id||'').trim();
       if(!externalId)throw new Error('EXTERNAL_MESSAGE_ID_REQUIRED');
       const args={p_phone:normalizePhone(message.phone),p_whatsapp_jid:normalizeJid(message.whatsapp_jid),p_name:message.name||null,p_source:message.source||'WHATSAPP',p_external_message_id:externalId,p_text_content:message.text||'',p_message_timestamp:message.timestamp||null,p_metadata:{type:message.type||'text',media_url:message.media_url||null,source:message.source||'WHATSAPP',campaign:message.campaign||null,timestamp:message.timestamp||null,whatsapp_jid:normalizeJid(message.whatsapp_jid)}};
-      const{data,error}=await client.rpc('crm_ingest_whatsapp_inbound',args);if(error)throw error;
+      const{data,error}=await client.rpc('crm_ingest_whatsapp_inbound',args);if(error){if(isMissingFunctionError(error)){atomicUnavailableUntil=Date.now()+ATOMIC_RECHECK_MS;console.warn('SUPABASE_ATOMIC_INGEST_UNAVAILABLE',{code:error.code||null,recheckInMs:ATOMIC_RECHECK_MS});throw atomicUnavailable()}throw error}
       const result=Array.isArray(data)?data[0]:data;if(!result?.lead||!result?.message)throw new Error('SUPABASE_ATOMIC_INGEST_INVALID_RESULT');
       return{lead:fromDbLead(result.lead),saved:result.message,event:result.event||null,duplicate:Boolean(result.duplicate)};
     },
