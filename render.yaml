@@ -3,7 +3,7 @@ services:
     name: luis-chatbot-mvp
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
@@ -49,4 +49,4 @@ services:
       - key: CRM_AUTH_SECRET
         sync: false
       - key: WHATSAPP_QR_SESSION_DIR
-        value: /tmp/luis-whatsapp-sessions
+        value: /var/data/whatsapp-sessions

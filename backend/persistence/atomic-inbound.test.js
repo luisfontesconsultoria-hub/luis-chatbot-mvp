@@ -1,0 +1,21 @@
+const assert=require('assert');const fs=require('fs');const path=require('path');
+const{createSupabaseRepository}=require('./supabase-adapter');
+(async()=>{
+  const calls=[];const query={select(){return this},eq(){return this},limit(){return Promise.resolve({data:[],error:null})}};
+  const client={from(){return query},async rpc(name,args){calls.push({name,args});return{data:{duplicate:false,lead:{id:'l1',company_name:'Empresa',phone:'5551999999999',status:'NEW'},message:{id:'m1',lead_id:'l1',external_message_id:'wamid-1'},event:{id:'e1'}},error:null}}};
+  const repo=createSupabaseRepository(client);
+  const result=await repo.ingestInboundMessage({external_message_id:'wamid-1',phone:'(55) 51 99999-9999',whatsapp_jid:'ABC@LID',name:'Ana',text:'Olá',timestamp:'2026-09-23T00:00:00Z'});
+  assert.strictEqual(calls[0].name,'crm_ingest_whatsapp_inbound');assert.strictEqual(calls[0].args.p_phone,'5551999999999');assert.strictEqual(calls[0].args.p_whatsapp_jid,'abc@lid');
+  assert.strictEqual(result.lead.companyName,'Empresa');assert.strictEqual(result.saved.id,'m1');assert.strictEqual(result.duplicate,false);
+  const sql=fs.readFileSync(path.join(__dirname,'../../supabase/migrations/20260923_atomic_whatsapp_inbound.sql'),'utf8').toLowerCase();
+  for(const token of ['security definer','set search_path = public, pg_temp','on conflict do nothing','revoke all on function','grant execute on function'])assert.ok(sql.includes(token),`migration missing ${token}`);
+  await assert.rejects(repo.ingestInboundMessage({phone:'1'}),/EXTERNAL_MESSAGE_ID_REQUIRED/);
+  const failing=createSupabaseRepository({...client,async rpc(){return{data:null,error:new Error('fetch failed')}}});
+  await assert.rejects(failing.ingestInboundMessage({external_message_id:'x',phone:'1'}),/fetch failed/);
+  const events=[];const duplicateRepo={async ingestInboundMessage(){return{duplicate:true,lead:{id:'l1'},saved:{id:'m1'}}},async listEvents(){return[]},async createEvent(e){events.push(e);return e}};
+  const{createWebhookPipeline}=require('../../server/webhook-pipeline');
+  const replay=createWebhookPipeline({repository:duplicateRepo,resume:true,sdrGateway:{async process(){throw new Error('SDR_MUST_NOT_RUN')}}});
+  const replayed=await replay([{external_message_id:'wamid-1',phone:'5551999999999',text:'Olá'}]);
+  assert.strictEqual(replayed[0].needsHuman,true);assert.strictEqual(events[0].type,'SPOOL_REPLAY_NEEDS_HUMAN');
+  console.log('PASS atomic WhatsApp inbound RPC contract');
+})().catch(e=>{console.error(e);process.exit(1)});

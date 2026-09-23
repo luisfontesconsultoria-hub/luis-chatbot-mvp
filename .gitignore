@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+!CRM_ENV.example
+*.log
+luis-whatsapp-sessions/
+whatsapp-sessions/
+spool/
+*.jsonl
+*.dump
+*.sql.gz
