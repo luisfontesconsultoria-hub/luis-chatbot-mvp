@@ -2,6 +2,14 @@ const { createClient } = require('@supabase/supabase-js');
 const WebSocketImpl = require('ws');
 const { createSupabaseRepository } = require('../backend/persistence/supabase-adapter');
 
+function createTimeoutFetch(timeoutMs, baseFetch = globalThis.fetch) {
+  return (input, init = {}) => {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    return baseFetch(input, { ...init, signal });
+  };
+}
+
 function createProductionRepository(env = process.env) {
   const url = env.SUPABASE_URL;
   // CRM persistence must use the server-side service-role credential.
@@ -15,9 +23,12 @@ function createProductionRepository(env = process.env) {
   // still builds the Realtime client eagerly, so this must always be provided.
   const client = createClient(url, key, {
     auth: { persistSession:false, autoRefreshToken:false, detectSessionInUrl:false },
-    realtime: { transport: WebSocketImpl }
+    realtime: { transport: WebSocketImpl },
+    // Sem timeout, um fetch pendurado deixa o handler do WhatsApp sem resultado terminal.
+    // O erro ("TimeoutError ... timeout") é transitório para o spool.
+    global: { fetch: createTimeoutFetch(Number(env.SUPABASE_FETCH_TIMEOUT_MS) || 15000) }
   });
   return createSupabaseRepository(client);
 }
 
-module.exports = { createProductionRepository };
+module.exports = { createProductionRepository, createTimeoutFetch };

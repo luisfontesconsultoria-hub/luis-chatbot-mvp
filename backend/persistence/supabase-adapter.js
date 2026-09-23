@@ -14,7 +14,7 @@ function createSupabaseRepository(client) {
   if (!client || typeof client.from !== 'function') throw new Error('SUPABASE_CLIENT_REQUIRED');
   let atomicUnavailableUntil=0;
   const repo={
-    async listLeads({limit=50,source,status,stage}={}){let q=client.from(TABLES.leads).select('*').limit(limit);if(source)q=q.eq('source',source);if(status)q=q.eq('status',status);if(stage)q=q.eq('stage',stage);const{data,error}=await q;if(error)throw error;return(data||[]).map(fromDbLead)},
+    async listLeads({limit=50,source,status,stage}={}){let q=client.from(TABLES.leads).select('*').order('updated_at',{ascending:false}).order('created_at',{ascending:false}).limit(limit);if(source)q=q.eq('source',source);if(status)q=q.eq('status',status);if(stage)q=q.eq('stage',stage);const{data,error}=await q;if(error)throw error;return(data||[]).map(fromDbLead)},
     async getLead(id){const{data,error}=await client.from(TABLES.leads).select('*').eq('id',id).single();if(error&&error.code!=='PGRST116')throw error;return data?fromDbLead(data):null},
     async findOrCreateLeadByWhatsappIdentity({phone,jid}={},defaults={}){
       const normalizedPhone=normalizePhone(phone), normalizedJid=normalizeJid(jid);
