@@ -8,6 +8,7 @@ function createIdempotencyGuard({ maxEntries=5000, ttlMs=10*60*1000 }={}) {
   return {
     has(key){ const k=String(key); const timestamp=seen.get(k); if(!timestamp) return false; if(Date.now()-timestamp>ttlMs){seen.delete(k);return false;} return true; },
     mark(key){ const k=String(key); if(this.has(k)) return false; seen.set(k,Date.now()); prune(); return true; },
+    forget(key){ seen.delete(String(key)); },
     clear(){seen.clear();}
   };
 }

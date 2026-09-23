@@ -1,6 +1,10 @@
 const { createIdempotencyGuard } = require('./security/idempotency');
 function isDuplicateError(error) { const code=error?.code||''; const message=String(error?.message||'').toLowerCase(); return code==='23505'||message.includes('duplicate')||message.includes('unique')||message.includes('idempot'); }
-function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(), sdrGateway=null, onMessage=async()=>null }) {
+// resume=true: modo de reprocessamento da fila (spool). Ignora o guard em memória
+// (o dedupe durável é do banco) e, se a mensagem de entrada já existir, NÃO roda o SDR
+// de novo (evita resposta duplicada ao cliente): se não houver SDR_PROCESSED para ela,
+// registra SPOOL_REPLAY_NEEDS_HUMAN para retorno manual.
+function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(), sdrGateway=null, onMessage=async()=>null, resume=false }) {
   if (!repository) throw new Error('REPOSITORY_REQUIRED');
   return async function process(messages=[]) {
     const results=[];
@@ -9,7 +13,7 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
       if (!message?.phone && !whatsappJid) { results.push({status:'ignored',reason:'WHATSAPP_IDENTITY_REQUIRED'}); continue; }
       const identity=message.phone||whatsappJid;
       const key=message.external_message_id||`${identity}:${message.timestamp}:${message.text||''}`;
-      if (idempotency.has(key)) { results.push({status:'duplicate',key}); continue; }
+      if (!resume && idempotency.has(key)) { results.push({status:'duplicate',key}); continue; }
       try {
         const defaults={source:message.source||'WHATSAPP',name:message.name||null};
         const lead=typeof repository.findOrCreateLeadByWhatsappIdentity==='function'
@@ -28,14 +32,22 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
           saved=await repository.createMessage({lead_id:lead.id,channel:message.channel||'WHATSAPP',direction:'INBOUND',external_message_id:message.external_message_id||key,text_content:message.text||'',transcript:message.transcript||null,metadata:{type:message.type||'text',media_url:message.media_url||null,source:message.source||'WHATSAPP',campaign:message.campaign||null,timestamp:message.timestamp||null,whatsapp_jid:whatsappJid}});
         } catch(error) {
           if(!isDuplicateError(error)) throw error;
-          results.push({status:'duplicate',key,lead_id:lead.id}); continue;
+          if(!resume){ results.push({status:'duplicate',key,lead_id:lead.id}); continue; }
+          const sdrDone=await sdrAlreadyProcessed(repository,lead.id,key);
+          if(!sdrDone) await repository.createEvent({lead_id:lead.id,type:'SPOOL_REPLAY_NEEDS_HUMAN',idempotency_key:`spool-needs-human:${key}`,payload:{external_message_id:key,reason:'INBOUND_SAVED_BUT_SDR_NOT_CONFIRMED'}});
+          results.push({status:'duplicate',key,lead_id:lead.id,needsHuman:!sdrDone}); continue;
         }
         const outcome=sdrGateway?await sdrGateway.process({lead,message,saved}):await onMessage({message,lead,saved});
         await repository.createEvent({lead_id:lead.id,type:'SDR_PROCESSED',idempotency_key:`sdr:${key}`,payload:{external_message_id:key,status:outcome?.status||'UNKNOWN'}});
         results.push({status:'processed',key,lead,saved,outcome});
-      } catch(error) { results.push({status:'error',key,error:error?.message||'PROCESSING_ERROR'}); }
+      } catch(error) { if(typeof idempotency.forget==='function') idempotency.forget(key); results.push({status:'error',key,error:error?.message||'PROCESSING_ERROR'}); }
     }
     return results;
   };
 }
-module.exports={createWebhookPipeline,isDuplicateError};
+async function sdrAlreadyProcessed(repository,leadId,key){
+  if(typeof repository.listEvents!=='function') return false;
+  const rows=await repository.listEvents({leadId,type:'SDR_PROCESSED',limit:200});
+  return (rows||[]).some(e=>e?.idempotency_key===`sdr:${key}`||e?.payload?.external_message_id===key);
+}
+module.exports={createWebhookPipeline,isDuplicateError,sdrAlreadyProcessed};
