@@ -4,7 +4,9 @@ function isDuplicateError(error) { const code=error?.code||''; const message=Str
 // (o dedupe durável é do banco) e, se a mensagem de entrada já existir, NÃO roda o SDR
 // de novo (evita resposta duplicada ao cliente): se não houver SDR_PROCESSED para ela,
 // registra SPOOL_REPLAY_NEEDS_HUMAN para retorno manual.
-function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(), sdrGateway=null, onMessage=async()=>null, resume=false }) {
+// trace(stage,key,extra): gancho opcional de observabilidade (sem PII); nunca altera o fluxo.
+function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(), sdrGateway=null, onMessage=async()=>null, resume=false, trace=()=>{} }) {
+  const t=(stage,key,extra)=>{try{trace(stage,key,extra)}catch(_){}};
   if (!repository) throw new Error('REPOSITORY_REQUIRED');
   return async function process(messages=[]) {
     const results=[];
@@ -14,6 +16,7 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
       const identity=message.phone||whatsappJid;
       const key=message.external_message_id||`${identity}:${message.timestamp}:${message.text||''}`;
       if (!resume && idempotency.has(key)) { results.push({status:'duplicate',key}); continue; }
+      t('PIPELINE_START',key,{resume});
       try {
         let atomic=null;
         if(typeof repository.ingestInboundMessage==='function'){
@@ -32,10 +35,13 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
           results.push({status:'processed',key,lead,saved,outcome,atomic:true});continue;
         }
         const defaults={source:message.source||'WHATSAPP',name:message.name||null};
+        t('LEAD_START',key);
         const lead=typeof repository.findOrCreateLeadByWhatsappIdentity==='function'
           ? await repository.findOrCreateLeadByWhatsappIdentity({phone:message.phone||null,jid:whatsappJid},defaults)
           : await repository.findOrCreateLeadByPhone(message.phone,defaults);
         if(whatsappJid)lead.whatsappJid=whatsappJid;
+        t('LEAD_END',key,{hasPhone:Boolean(lead.phone)});
+        t('EVENT_START',key);
         try {
           await repository.createEvent({lead_id:lead.id,type:'WHATSAPP_INBOUND',idempotency_key:key,payload:{external_message_id:key,type:message.type||'text',timestamp:message.timestamp||null,whatsapp_jid:whatsappJid}});
           idempotency.mark(key);
@@ -43,7 +49,9 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
           if(isDuplicateError(error)){ idempotency.mark(key); results.push({status:'duplicate',key,lead_id:lead.id}); continue; }
           throw error;
         }
+        t('EVENT_END',key);
         let saved;
+        t('MESSAGE_START',key);
         try {
           saved=await repository.createMessage({lead_id:lead.id,channel:message.channel||'WHATSAPP',direction:'INBOUND',external_message_id:message.external_message_id||key,text_content:message.text||'',transcript:message.transcript||null,metadata:{type:message.type||'text',media_url:message.media_url||null,source:message.source||'WHATSAPP',campaign:message.campaign||null,timestamp:message.timestamp||null,whatsapp_jid:whatsappJid}});
         } catch(error) {
@@ -53,10 +61,14 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
           if(!sdrDone) await repository.createEvent({lead_id:lead.id,type:'SPOOL_REPLAY_NEEDS_HUMAN',idempotency_key:`spool-needs-human:${key}`,payload:{external_message_id:key,reason:'INBOUND_SAVED_BUT_SDR_NOT_CONFIRMED'}});
           results.push({status:'duplicate',key,lead_id:lead.id,needsHuman:!sdrDone}); continue;
         }
+        t('MESSAGE_END',key);
+        t('SDR_START',key);
         const outcome=sdrGateway?await sdrGateway.process({lead,message,saved}):await onMessage({message,lead,saved});
+        t('SDR_END',key,{status:outcome?.status||'UNKNOWN',replySent:Boolean(outcome?.replySent)});
         await repository.createEvent({lead_id:lead.id,type:'SDR_PROCESSED',idempotency_key:`sdr:${key}`,payload:{external_message_id:key,status:outcome?.status||'UNKNOWN'}});
         results.push({status:'processed',key,lead,saved,outcome});
-      } catch(error) { if(typeof idempotency.forget==='function') idempotency.forget(key); results.push({status:'error',key,error:error?.message||'PROCESSING_ERROR'}); }
+        t('PIPELINE_END',key,{status:'processed'});
+      } catch(error) { if(typeof idempotency.forget==='function') idempotency.forget(key); t('PIPELINE_END',key,{status:'error',error:String(error?.message||'PROCESSING_ERROR').slice(0,120)}); results.push({status:'error',key,error:error?.message||'PROCESSING_ERROR'}); }
     }
     return results;
   };
