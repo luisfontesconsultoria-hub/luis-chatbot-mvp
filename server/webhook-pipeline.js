@@ -15,6 +15,18 @@ function createWebhookPipeline({ repository, idempotency=createIdempotencyGuard(
       const key=message.external_message_id||`${identity}:${message.timestamp}:${message.text||''}`;
       if (!resume && idempotency.has(key)) { results.push({status:'duplicate',key}); continue; }
       try {
+        if(typeof repository.ingestInboundMessage==='function'){
+          const atomic=await repository.ingestInboundMessage({...message,whatsapp_jid:whatsappJid,external_message_id:key});
+          if(atomic.duplicate){
+            idempotency.mark(key);
+            if(resume){const sdrDone=await sdrAlreadyProcessed(repository,atomic.lead.id,key);if(!sdrDone)await repository.createEvent({lead_id:atomic.lead.id,type:'SPOOL_REPLAY_NEEDS_HUMAN',idempotency_key:`spool-needs-human:${key}`,payload:{external_message_id:key,reason:'INBOUND_SAVED_BUT_SDR_NOT_CONFIRMED'}});results.push({status:'duplicate',key,lead_id:atomic.lead.id,needsHuman:!sdrDone});continue}
+            results.push({status:'duplicate',key,lead_id:atomic.lead.id});continue;
+          }
+          const lead=atomic.lead,saved=atomic.saved;idempotency.mark(key);
+          const outcome=sdrGateway?await sdrGateway.process({lead,message,saved}):await onMessage({message,lead,saved});
+          await repository.createEvent({lead_id:lead.id,type:'SDR_PROCESSED',idempotency_key:`sdr:${key}`,payload:{external_message_id:key,status:outcome?.status||'UNKNOWN'}});
+          results.push({status:'processed',key,lead,saved,outcome,atomic:true});continue;
+        }
         const defaults={source:message.source||'WHATSAPP',name:message.name||null};
         const lead=typeof repository.findOrCreateLeadByWhatsappIdentity==='function'
           ? await repository.findOrCreateLeadByWhatsappIdentity({phone:message.phone||null,jid:whatsappJid},defaults)
