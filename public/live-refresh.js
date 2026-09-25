@@ -85,7 +85,7 @@
     if (busy || !state?.token) return;
     busy = true;
     try {
-      const d = await api('/api/crm/leads?limit=100');
+      const d = await api('/api/crm/leads?limit=1500&view=contacts');
       const previousSelected = state.selected?.id ? String(state.selected.id) : null;
       state.leads = d.leads || [];
       if (typeof renderDashboard === 'function') renderDashboard();
