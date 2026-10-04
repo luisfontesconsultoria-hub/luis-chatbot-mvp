@@ -155,7 +155,7 @@ async function connect(slot,{repository,env=process.env,auto=false}={}){
   logStatus(id,'CONNECTING',{paired,auto});
   sessions.set(id,current);
   const sender={provider:'BAILEYS_QR',async sendText({to,jid,text}){if(!current.socket)throw new Error('WHATSAPP_QR_NOT_CONNECTED');const direct=normalizeIndividualJid(jid)||normalizeIndividualJid(to);const phone=String(to||'').replace(/\D/g,'');const target=direct||(phone?`${phone}@s.whatsapp.net`:null);if(!target)throw new Error('WHATSAPP_RECIPIENT_REQUIRED');const r=await deadline(current.socket.sendMessage(target,{text:String(text).slice(0,4096)}),SEND_TIMEOUT_MS,'WHATSAPP_SEND_TIMEOUT');if(r?.key?.id)current.sentMessageIds.add(r.key.id);return{messages:[{id:r?.key?.id||null}],raw:r}}};
-  const sdr=createProductionSdrGateway({repository,sender,env});
+  const sdr=createProductionSdrGateway({repository,sender,env,slot:id});
   const pipeline=createWebhookPipeline({repository,sdrGateway:sdr,trace:(stage,key,extra)=>traceLog(id,correlationId(key),stage,extra)});
   spoolProcessors.set(id,buildSpoolProcessor({repository,sdrGateway:sdr}));ensureSpoolTimer();
   let version;try{version=await fetchLatestBaileysVersion()}catch(_){version=null}
