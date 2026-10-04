@@ -1,6 +1,6 @@
 const state={token:sessionStorage.getItem('crm_token')||'',leads:[],selected:null,slots:[]};
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const STATUS_LABEL={NEW:'Novo',IDENTIFYING:'Identificando perfil',QUALIFYING:'Em qualificação',QUALIFIED:'Qualificado',ACCEPTED:'Oportunidade',MEETING_MODE:'Visita agendada',SCHEDULING:'Agendamento',CONFIRMED:'Confirmado',NEGOTIATION:'Negociação',AGUARDANDO_RETORNO_DO_LUIS:'Aguardando atendimento',AGUARDANDO_RETORNO:'Aguardando retorno',HUMAN:'Atendimento humano',CONVERTIDO:'Convertido',PERDIDO:'Encerrado'};
+const STATUS_LABEL={NEW:'Novo',IDENTIFYING:'Identificando perfil',QUALIFYING:'Em qualificação',QUALIFIED:'Qualificado',ACCEPTED:'Oportunidade',MEETING_MODE:'Visita agendada',SCHEDULING:'Agendamento',CONFIRMED:'Confirmado',NEGOTIATION:'Negociação',AGUARDANDO_RETORNO_DO_LUIS:'Aguardando atendimento',AGUARDANDO_RETORNO:'Aguardando retorno',HUMAN:'Atendimento humano',CONVERTIDO:'Convertido',PERDIDO:'Encerrado',PRODUCT_PRESENTED:'Produto apresentado',PRODUCT_LINK_SENT:'Link enviado',HUMAN_HANDOFF:'Atendimento humano',LOST:'Encerrado'};
 const PRIORITY_LABEL={HIGH:'Alta',MEDIUM:'Média',LOW:'Baixa'};
 const TEMPERATURE_LABEL={QUALIFIED:'🔥 Qualificado',HOT:'🔴 Quente',WARM:'🟠 Média',COLD:'🔵 Fria'};
 const labelTemperature=v=>TEMPERATURE_LABEL[String(v||'').toUpperCase()]||'—';
