@@ -50,3 +50,5 @@ services:
         sync: false
       - key: WHATSAPP_QR_SESSION_DIR
         value: /var/data/whatsapp-sessions
+      - key: WHATSAPP_MAX_SLOTS
+        value: "4"
