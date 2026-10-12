@@ -1,6 +1,6 @@
 const state={token:sessionStorage.getItem('crm_token')||'',leads:[],selected:null,slots:[]};
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const STATUS_LABEL={NEW:'Novo',IDENTIFYING:'Identificando perfil',QUALIFYING:'Em qualificação',QUALIFIED:'Qualificado',ACCEPTED:'Oportunidade',MEETING_MODE:'Visita agendada',SCHEDULING:'Agendamento',CONFIRMED:'Confirmado',NEGOTIATION:'Negociação',AGUARDANDO_RETORNO_DO_LUIS:'Aguardando atendimento',AGUARDANDO_RETORNO:'Aguardando retorno',HUMAN:'Atendimento humano',CONVERTIDO:'Convertido',PERDIDO:'Encerrado'};
+const STATUS_LABEL={NEW:'Novo',IDENTIFYING:'Identificando perfil',QUALIFYING:'Em qualificação',QUALIFIED:'Qualificado',ACCEPTED:'Oportunidade',MEETING_MODE:'Visita agendada',SCHEDULING:'Agendamento',CONFIRMED:'Confirmado',NEGOTIATION:'Negociação',AGUARDANDO_RETORNO_DO_LUIS:'Aguardando atendimento',AGUARDANDO_RETORNO:'Aguardando retorno',HUMAN:'Atendimento humano',CONVERTIDO:'Convertido',PERDIDO:'Encerrado',REEMBOLSADO:'Reembolsado',LOST:'Encerrado',AF_IDENTIFY_PRODUCT:'Afiliado: identificando produto',AF_DIAGNOSING:'Afiliado: diagnóstico',AF_PRESENTING:'Afiliado: apresentação',AF_DECIDING:'Afiliado: decisão',AF_LINK_SENT:'Afiliado: link enviado',AF_PURCHASE_REPORTED:'Afiliado: diz que comprou',AF_SOLD:'Afiliado: venda aprovada'};
 const PRIORITY_LABEL={HIGH:'Alta',MEDIUM:'Média',LOW:'Baixa'};
 const TEMPERATURE_LABEL={QUALIFIED:'🔥 Qualificado',HOT:'🔴 Quente',WARM:'🟠 Média',COLD:'🔵 Fria'};
 const labelTemperature=v=>TEMPERATURE_LABEL[String(v||'').toUpperCase()]||'—';
