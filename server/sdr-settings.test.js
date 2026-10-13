@@ -97,7 +97,7 @@ try {
   // Comportamento do número: tempo de resposta e horário
   assert.deepEqual(D, { delayMin: 0, delayMax: 0, typing: true, hours: { enabled: false, start: '08:00', end: '20:00', days: [1, 2, 3, 4, 5, 6], outside: 'AWAY', awayMessage: '' } });
   assert.equal(code(() => normalizeBehavior({ delayMin: 10, delayMax: 5 })), 'DELAY_RANGE_INVALID');
-  assert.equal(normalizeBehavior({ delayMin: -4, delayMax: 999 }).delayMax, 40, 'espera limitada a 40s (cabe no prazo do pipeline)');
+  assert.equal(normalizeBehavior({ delayMin: -4, delayMax: 999 }).delayMax, 20, 'espera limitada a 20s (cabe no prazo do pipeline)');
   assert.equal(normalizeBehavior({ delayMin: -4, delayMax: 999 }).delayMin, 0);
   assert.equal(code(() => normalizeBehavior({ hours: { start: '8h' } })), 'HOURS_INVALID');
   assert.equal(code(() => normalizeBehavior({ hours: { start: '10:00', end: '10:00' } })), 'HOURS_INVALID');

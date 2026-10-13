@@ -24,7 +24,7 @@ function harness({ env = { AI_ASSIST_ENABLED: 'false' }, generateReply, clock = 
     async createAudit(row) { log.audits.push(row); return row; },
     async createEvent(row) { log.events.push(row); return row; },
     async listEvents({ leadId, type }) { return log.events.filter(e => e.lead_id === leadId && (!type || e.type === type)).reverse(); },
-    async createMessage(row) { log.messages.unshift({ ...row }); return row; },
+    async createMessage(row) { log.messages.unshift({ created_at: new Date().toISOString(), ...row }); return row; },
     async listMessages() { return log.messages; }
   };
   const sender = {
@@ -35,7 +35,7 @@ function harness({ env = { AI_ASSIST_ENABLED: 'false' }, generateReply, clock = 
   const state = { clock };
   const sdr = createProductionSdrGateway({
     repository, sender, env, slot: 1, settings, generateReply,
-    now: () => state.clock, wait: async ms => { log.waits.push(ms); }, random
+    now: () => state.clock, wait: async ms => { log.waits.push(ms); if (api.onWait) await api.onWait(); }, random
   });
   let n = 0;
   async function say(lead, text) {
@@ -46,7 +46,8 @@ function harness({ env = { AI_ASSIST_ENABLED: 'false' }, generateReply, clock = 
     if (last && last.id === lead.id) Object.assign(lead, last.patch);
     return out;
   }
-  return { settings, log, say, state, sender };
+  const api = { settings, log, say, state, sender, sdrRepo: repository, onWait: null };
+  return api;
 }
 const lastSent = h => h.log.sent[h.log.sent.length - 1]?.text || null;
 const product = extra => ({ name: 'Método X', code: 'EMAG', link: 'https://pay.exemplo.com/metodo-x?ref=af1', price: 'R$ 197,00', pitch: 'Curso prático.', ...extra });
@@ -197,6 +198,80 @@ const product = extra => ({ name: 'Método X', code: 'EMAG', link: 'https://pay.
       const out = await h.say({ id: 'd1', phone: '5571999990013', status: 'PRODUCT_SOLD' }, 'oi, já comprei');
       assert.equal(out.replySent, false);
       assert.equal(h.log.sent.length, 0);
+    }
+
+    // 7. Cliente que comprou ou pediu para sair não volta ao roteiro ao clicar de novo no anúncio
+    {
+      const h = harness();
+      h.settings.saveProduct(product());
+      h.settings.setSlot(1, { mode: 'PRODUCT', productId: 'metodo-x' });
+      let out = await h.say({ id: 'e1', phone: '5571999990020', status: 'PRODUCT_SOLD', campaign: 'EMAG' }, 'Olá (ref EMAG)');
+      assert.equal(out.replySent, false);
+      out = await h.say({ id: 'e2', phone: '5571999990021', status: 'LOST', campaign: 'EMAG' }, 'Olá (ref EMAG)');
+      assert.equal(out.replySent, false);
+      assert.equal(h.log.sent.length, 0);
+      assert.equal(h.log.updates.length, 0, 'status de venda e de saída são preservados');
+
+      // Fora do horário também não recebem ausência
+      h.settings.setSlot(1, { mode: 'PRODUCT', productId: 'metodo-x', hours: { ...weekdays, outside: 'AWAY' } });
+      h.state.clock = SUN_10H;
+      out = await h.say({ id: 'e3', phone: '5571999990022', status: 'PRODUCT_SOLD' }, 'oi');
+      assert.equal(out.replySent, false);
+      assert.equal(h.log.sent.length, 0);
+    }
+
+    // 8. Roteiro Conta PJ não responde a quem está no roteiro de um produto, saiu ou comprou
+    {
+      const h = harness();
+      h.settings.setSlot(1, { mode: 'CONTA_PJ' });
+      for (const status of ['PRODUCT_PRESENTED', 'PRODUCT_LINK_SENT', 'PRODUCT_SOLD', 'LOST']) {
+        const out = await h.say({ id: `f-${status}`, phone: '5571999990023', status }, 'bom dia');
+        assert.deepEqual([out.replySent, out.skipped], [false, 'OTHER_FLOW'], status);
+      }
+      assert.equal(h.log.sent.length + h.log.updates.length, 0);
+    }
+
+    // 9. Espera com nova mensagem, resposta humana ou mudança de etapa: a resposta do robô é cancelada
+    {
+      const scenario = async (during, expectReply) => {
+        const h = harness({ random: () => 0 });
+        h.settings.saveProduct(product());
+        h.settings.setSlot(1, { mode: 'PRODUCT', productId: 'metodo-x', delayMin: 5, delayMax: 5 });
+        const lead = { id: `g-${Math.random()}`, phone: '5571999990024', status: 'NEW' };
+        h.log.lead = lead;
+        // getLead devolve o lead como está "no banco"
+        const store = new Map([[lead.id, { ...lead }]]);
+        const repo = h.sdrRepo;
+        repo.getLead = async id => store.get(id);
+        const originalUpdate = repo.updateLead;
+        repo.updateLead = async (id, patch) => { store.set(id, { ...store.get(id), ...patch }); return originalUpdate(id, patch); };
+        h.onWait = () => during({ h, store, lead });
+        const out = await h.say(lead, 'oi (ref EMAG)');
+        assert.equal(out.replySent, expectReply);
+        assert.equal(h.log.sent.length, expectReply ? 1 : 0);
+        if (!expectReply) assert.ok(h.log.events.some(e => e.type === 'SDR_REPLY_CANCELLED'));
+      };
+      const later = () => new Date(Date.now() + 60000).toISOString();
+      await scenario(() => {}, true);
+      await scenario(({ h }) => h.log.messages.unshift({ direction: 'OUTBOUND', text_content: 'Oi, aqui é o Luís', created_at: later(), metadata: {} }), false);
+      await scenario(({ h }) => h.log.messages.unshift({ direction: 'INBOUND', external_message_id: 'in.novo', text_content: 'e o preço?', created_at: later() }), false);
+      await scenario(({ store, lead }) => store.set(lead.id, { ...store.get(lead.id), status: 'HUMAN_HANDOFF' }), false);
+    }
+
+    // 10. Devolvido ao robô: a contagem de respostas recomeça; mensagens da pessoa não contam
+    {
+      const h = harness();
+      h.settings.saveProduct(product({ maxReplies: 3 }));
+      h.settings.setSlot(1, { mode: 'PRODUCT', productId: 'metodo-x' });
+      const old = new Date(Date.now() - 3600000).toISOString();
+      const lead = { id: 'h1', phone: '5571999990025', status: 'PRODUCT_LINK_SENT', campaign: 'EMAG' };
+      for (let i = 0; i < 4; i++) h.log.messages.unshift({ direction: 'OUTBOUND', text_content: `robô ${i}`, created_at: old, metadata: { origin: 'SDR' } });
+      for (let i = 0; i < 5; i++) h.log.messages.unshift({ direction: 'OUTBOUND', text_content: `Luís ${i}`, created_at: old, metadata: {} });
+      h.log.events.push({ lead_id: 'h1', type: 'HUMAN_RELEASE', created_at: new Date(Date.now() - 60000).toISOString(), payload: {} });
+      const out = await h.say(lead, 'obrigado');
+      assert.notEqual(out.status, 'HUMAN_HANDOFF', 'respostas antigas e da pessoa não estouram o limite depois da devolução');
+      assert.equal(out.replySent, true);
+      assert.equal(h.log.messages.find(m => m.direction === 'OUTBOUND' && m.text_content === lastSent(h)).metadata.origin, 'SDR', 'resposta do robô é marcada');
     }
 
     console.log('PASS SDR behavior: business hours, reply delay, tracked link, objections, reply limit, AI per product');

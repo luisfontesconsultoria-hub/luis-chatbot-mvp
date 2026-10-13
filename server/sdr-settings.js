@@ -23,7 +23,7 @@ const MAX_OBJECTIONS = 20;
 const LIMITS = Object.freeze({
   name: 80, code: 20, pitch: 600, knowledge: 6000, price: 80, link: 500,
   trackingParam: 30, objectionAnswer: 600, objectionKeyword: 60, awayMessage: 400,
-  maxRepliesMin: 3, maxRepliesMax: 30, delayMaxSeconds: 40
+  maxRepliesMin: 3, maxRepliesMax: 30, delayMaxSeconds: 20
 });
 const DEFAULT_MAX_REPLIES = 12;
 const DEFAULT_AWAY_MESSAGE = 'Olá! Recebemos sua mensagem. Nosso atendimento é das {inicio} às {fim}. Assim que abrirmos, te respondemos por aqui.';

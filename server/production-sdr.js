@@ -43,6 +43,13 @@ function awayText(hours) {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// Cliente que pediu para sair ou que já comprou: nenhum roteiro volta a falar com ele sozinho.
+const STOP_STATES = new Set(['LOST', 'PRODUCT_SOLD']);
+// Estados do roteiro de produto: o roteiro Conta PJ não responde a quem está neles.
+const PRODUCT_ONLY_STATES = new Set([...PRODUCT_FLOW_STATES, 'PRODUCT_SOLD']);
+const ROBOT_ORIGIN = 'SDR';
+const time = value => { const t = Date.parse(value || ''); return Number.isFinite(t) ? t : null; };
+
 /**
  * Gateway do SDR.
  *
@@ -77,12 +84,62 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
     return ms;
   }
 
+  /**
+   * Envia a resposta do robô depois da espera configurada. Se durante a espera uma
+   * pessoa respondeu, o cliente mandou outra mensagem ou o lead mudou de etapa,
+   * a resposta é cancelada: quem responde é a mensagem mais nova ou a pessoa.
+   */
+  async function sendReply({ slotConfig, lead, text, expectedStatus, startedAt, messageId }) {
+    const waited = slotConfig ? await humanPause(slotConfig, lead) : 0;
+    if (waited > 0) {
+      try {
+        if (typeof repository.getLead === 'function') {
+          const fresh = await repository.getLead(lead.id);
+          if (fresh && String(fresh.status || '') !== String(expectedStatus || '')) return cancelReply(lead, messageId, 'LEAD_CHANGED');
+        }
+        if (typeof repository.listMessages === 'function') {
+          const recent = await repository.listMessages({ leadId: lead.id, limit: 5 });
+          const newer = (recent || []).some(row => {
+            const created = time(row.created_at);
+            if (created === null || created <= startedAt || row.external_message_id === messageId) return false;
+            return row.direction === 'INBOUND' || row?.metadata?.origin !== ROBOT_ORIGIN;
+          });
+          if (newer) return cancelReply(lead, messageId, 'NEWER_MESSAGE');
+        }
+      } catch (error) { console.warn('SDR_RECHECK_FAILED', error?.message || 'RECHECK_ERROR'); }
+    }
+    await outbound({ lead, text, origin: ROBOT_ORIGIN });
+    return true;
+  }
+
+  async function cancelReply(lead, messageId, reason) {
+    if (typeof repository.createEvent === 'function') {
+      try { await repository.createEvent({ lead_id: lead.id, type: 'SDR_REPLY_CANCELLED', idempotency_key: messageId ? `SDR_REPLY_CANCELLED:${messageId}` : null, payload: { reason, slot } }); }
+      catch (error) { console.warn('SDR_CANCEL_EVENT_FAILED', error?.message || 'EVENT_ERROR'); }
+    }
+    return false;
+  }
+
+  /** Respostas do robô desde a última vez que uma pessoa devolveu o cliente ao robô. */
+  async function countRobotReplies(lead, rows) {
+    let releasedAt = null;
+    if (typeof repository.listEvents === 'function') {
+      try { releasedAt = time((await repository.listEvents({ leadId: lead.id, type: 'HUMAN_RELEASE', limit: 1 }))?.[0]?.created_at); }
+      catch (error) { console.warn('SDR_RELEASE_LOOKUP_FAILED', error?.message || 'LOOKUP_ERROR'); }
+    }
+    return rows.filter(row => {
+      if (row.direction !== 'OUTBOUND' || row?.metadata?.origin !== ROBOT_ORIGIN) return false;
+      const created = time(row.created_at);
+      return releasedAt === null || created === null || created > releasedAt;
+    }).length;
+  }
+
   /** Fora do horário: mensagem de ausência (uma vez por dia por lead) ou silêncio. O lead não muda. */
   async function outsideHours({ lead, message, slotConfig }) {
     const status = String(lead.status || '').toUpperCase();
     const base = { status: lead.status || 'NEW', handoff: false, replySent: false, mode: slotConfig.mode, outsideHours: true };
     // Conversa com uma pessoa ou cliente que pediu para sair: o robô não interfere.
-    if (HUMAN_GATES.has(status) || status === 'LOST') return base;
+    if (HUMAN_GATES.has(status) || STOP_STATES.has(status)) return base;
     // Lead que chega por anúncio fora do horário: a origem é gravada agora, para o
     // robô saber o produto quando o cliente voltar a escrever sem o código.
     if (slotConfig.mode === 'PRODUCT') {
@@ -103,12 +160,13 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
         if ((rows || []).some(row => row?.payload?.date === date)) return base;
       } catch (error) { console.warn('SDR_AWAY_LOOKUP_FAILED', error?.message || 'LOOKUP_ERROR'); return base; }
     }
-    await outbound({ lead, text: awayText(slotConfig.hours) });
+    await outbound({ lead, text: awayText(slotConfig.hours), origin: 'SDR_AWAY' });
     if (typeof repository.createEvent === 'function') await repository.createEvent({ lead_id: lead.id, type: 'SDR_AWAY_MESSAGE', idempotency_key: `SDR_AWAY_MESSAGE:${lead.id}:${date}`, payload: { slot, date } });
     return { ...base, replySent: true };
   }
 
   async function processProduct({ lead, message, slotConfig }) {
+    const startedAt = now().getTime();
     const text = message.text || '';
     const current = String(lead.status || '').toUpperCase();
     const resolved = resolveProduct({ text, lead, products: slotConfig.products, slotProductId: slotConfig.productId });
@@ -127,7 +185,7 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
       try { rows = await repository.listMessages({ leadId: lead.id, limit: 40 }); }
       catch (error) { console.warn('SDR_HISTORY_FALLBACK', error?.message || 'HISTORY_ERROR'); }
     }
-    const botReplies = rows.filter(row => row.direction === 'OUTBOUND').length;
+    const botReplies = await countRobotReplies(lead, rows);
     const history = rows.filter(row => row.external_message_id !== message.external_message_id).slice(0, 12).reverse()
       .map(row => ({ role: row.direction === 'OUTBOUND' ? 'assistant' : 'user', text: row.text_content || '' }));
 
@@ -135,7 +193,8 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
     // a menos que já esteja nele.
     const leadCode = String(lead.campaign || '').toUpperCase().split('-')[0];
     const sameProduct = Boolean(product.code) && leadCode === String(product.code).toUpperCase();
-    const restart = resolved.via === 'CODE' && !(sameProduct && PRODUCT_FLOW_STATES.has(current));
+    // Quem pediu para sair ou já comprou não recomeça o roteiro só por clicar de novo no anúncio.
+    const restart = resolved.via === 'CODE' && !STOP_STATES.has(current) && !(sameProduct && PRODUCT_FLOW_STATES.has(current));
 
     const step = nextProductStep({ lead, text, product, botReplies, restart });
     let final = step;
@@ -178,15 +237,13 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
     if (final.handoff && final.reply && typeof repository.createEvent === 'function') {
       await repository.createEvent({ lead_id: lead.id, type: 'SDR_HUMAN_GATE', idempotency_key: `SDR_HUMAN_GATE:${key}`, payload: { status: final.status, nextAction: final.nextAction || null, handoff: true, mode: 'PRODUCT', productId: product.id, reason: final.intent } });
     }
-    if (final.reply) {
-      await humanPause(slotConfig, lead);
-      await outbound({ lead, text: final.reply });
-    }
-    if (final.linkSent && typeof repository.createEvent === 'function') {
+    let sent = false;
+    if (final.reply) sent = await sendReply({ slotConfig, lead, text: final.reply, expectedStatus: silent ? lead.status : final.status, startedAt, messageId: message.external_message_id });
+    if (final.linkSent && sent && typeof repository.createEvent === 'function') {
       await repository.createEvent({ lead_id: lead.id, type: 'PRODUCT_LINK_SENT', idempotency_key: `PRODUCT_LINK_SENT:${key}`, payload: { productId: product.id, campaign: resolved.ref || product.code || null, slot } });
     }
 
-    return { status: final.status, handoff: Boolean(final.handoff), replySent: Boolean(final.reply), aiAssist, mode: 'PRODUCT', productId: product.id, intent: final.intent, linkSent: Boolean(final.linkSent) };
+    return { status: final.status, handoff: Boolean(final.handoff), replySent: sent, aiAssist, mode: 'PRODUCT', productId: product.id, intent: final.intent, linkSent: Boolean(final.linkSent && sent) };
   }
 
   return {
@@ -197,6 +254,13 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
         if (slotConfig.mode === 'OFF') return { status: lead.status || 'NEW', handoff: false, replySent: false, mode: 'OFF' };
         if (slotConfig.hours?.enabled && !withinBusinessHours(slotConfig.hours, now())) return outsideHours({ lead, message, slotConfig });
         if (slotConfig.mode === 'PRODUCT') return processProduct({ lead, message, slotConfig });
+      }
+      const startedAt = now().getTime();
+      // O roteiro Conta PJ não fala com quem saiu, comprou ou está no roteiro de um produto
+      // (o mesmo telefone pode ter chegado por outro número).
+      const currentStatus = String(lead.status || '').toUpperCase();
+      if (STOP_STATES.has(currentStatus) || PRODUCT_ONLY_STATES.has(currentStatus)) {
+        return { status: lead.status, handoff: false, replySent: false, skipped: 'OTHER_FLOW' };
       }
       const decision = processEvent({ lead, text: message.text || '', externalMessageId: message.external_message_id });
       let finalDecision = decision;
@@ -257,15 +321,15 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
         });
       }
 
+      let replySent = false;
       if (finalDecision.reply && finalDecision.status !== HUMAN) {
-        if (slotConfig) await humanPause(slotConfig, lead);
-        await outbound({ lead, text: finalDecision.reply });
+        replySent = await sendReply({ slotConfig, lead, text: finalDecision.reply, expectedStatus: finalDecision.status, startedAt, messageId: message.external_message_id });
       }
 
       return {
         status: finalDecision.status,
         handoff: Boolean(finalDecision.handoff),
-        replySent: Boolean(finalDecision.reply && finalDecision.status !== HUMAN),
+        replySent,
         aiAssist: Boolean(config.aiAssistEnabled && finalDecision.reply && finalDecision.reply !== decision.reply),
         score: score.total,
         temperature: score.temperature,
