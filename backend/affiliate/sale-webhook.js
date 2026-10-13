@@ -19,7 +19,8 @@ const { leadIdFromTrackingToken } = require('./tracking');
 
 const TOKEN_RX = /L[0-9a-f]{32}/i;
 const APPROVED_RX = /^(approved|aprovad\w*|complete|completed|paid|pago|purchase_approved|purchase_complete|order_approved|venda_aprovada)$/i;
-const REFUND_RX = /(refund|reembols|chargeback|cancel|estorn|dispute|protest)/i;
+// "cancel" fica de fora de propósito: boleto/PIX expirado chega como cancelado e nunca foi venda.
+const REFUND_RX = /(refund|reembols|chargeback|estorn|dispute|protest)/i;
 
 function safeEqual(a, b) {
   const left = Buffer.from(String(a || ''));
@@ -98,9 +99,10 @@ async function handleAffiliateSale({ repository, body, platform = null }) {
   }
   if (await alreadyProcessed(repository, lead.id, key)) return { status: 200, body: { received: true, matched: true, duplicate: true } };
 
-  await repository.createEvent({ lead_id: lead.id, type: 'AFFILIATE_SALE', idempotency_key: key, payload });
-
-  if (sale.kind === 'OTHER') return { status: 200, body: { received: true, matched: true, applied: false, kind: sale.kind } };
+  if (sale.kind === 'OTHER') {
+    await repository.createEvent({ lead_id: lead.id, type: 'AFFILIATE_SALE', idempotency_key: key, payload });
+    return { status: 200, body: { received: true, matched: true, applied: false, kind: sale.kind } };
+  }
 
   const patch = sale.kind === 'APPROVED'
     ? { stage: 'CONVERTIDO', status: 'PRODUCT_SOLD', nextAction: 'POS_VENDA', updatedAt: new Date().toISOString() }
@@ -116,6 +118,9 @@ async function handleAffiliateSale({ repository, body, platform = null }) {
     actor: 'AFFILIATE_WEBHOOK',
     metadata: payload
   });
+  // O registro que impede repetição vem por último: se a gravação do lead falhar,
+  // a plataforma reenvia e a venda é aplicada na nova tentativa.
+  await repository.createEvent({ lead_id: lead.id, type: 'AFFILIATE_SALE', idempotency_key: key, payload });
   return { status: 200, body: { received: true, matched: true, applied: true, kind: sale.kind } };
 }
 

@@ -93,6 +93,26 @@ const auth = require('./auth');
     assert.ok(log.events.some(e => e.type === 'AFFILIATE_SALE_UNMATCHED'));
     r = await call('POST', '/webhooks/affiliate-sale', { status: 'APPROVED' }, { 'x-affiliate-secret': 'segredo-venda-123' });
     assert.deepEqual([r.status, r.body.error], [400, 'TRANSACTION_ID_REQUIRED']);
+    // Boleto/PIX expirado chega como "cancelado": não é reembolso de venda
+    const lead2 = '223e4567-e89b-12d3-a456-426614174000';
+    leads.set(lead2, { id: lead2, phone: '5571900000006', status: 'PRODUCT_LINK_SENT', stage: 'NEGOTIATION' });
+    r = await call('POST', '/webhooks/affiliate-sale', { transaction_id: 'HP555', status: 'PURCHASE_CANCELED', sck: 'L223e4567e89b12d3a456426614174000' }, { 'x-affiliate-secret': 'segredo-venda-123' });
+    assert.deepEqual([r.status, r.body.applied], [200, false]);
+    assert.equal(leads.get(lead2).stage, 'NEGOTIATION');
+
+    // Falha ao gravar o lead: a plataforma reenvia e a venda é aplicada na nova tentativa
+    const originalUpdate = repository.updateLead;
+    repository.updateLead = async () => { throw new Error('SUPABASE_TIMEOUT'); };
+    const quiet = console.error; console.error = () => {};
+    try { r = await call('POST', '/webhooks/affiliate-sale', { transaction_id: 'HP777', status: 'approved', sck: 'L223e4567e89b12d3a456426614174000' }, { 'x-affiliate-secret': 'segredo-venda-123' }); }
+    finally { console.error = quiet; repository.updateLead = originalUpdate; }
+    assert.equal(r.status, 500);
+    r = await call('POST', '/webhooks/affiliate-sale', { transaction_id: 'HP777', status: 'approved', sck: 'L223e4567e89b12d3a456426614174000' }, { 'x-affiliate-secret': 'segredo-venda-123' });
+    assert.deepEqual([r.status, r.body.applied], [200, true]);
+    assert.equal(leads.get(lead2).status, 'PRODUCT_SOLD');
+
+    // Devolver ao robô deixa o marcador que zera a contagem de respostas automáticas
+    assert.ok(log.events.some(e => e.type === 'HUMAN_RELEASE' && e.lead_id === 'p1'));
     delete process.env.AFFILIATE_WEBHOOK_SECRET;
 
     console.log('PASS human queue, release back to the robot and affiliate sale webhook');
