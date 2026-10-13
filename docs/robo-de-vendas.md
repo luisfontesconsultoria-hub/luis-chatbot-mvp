@@ -1,6 +1,6 @@
 # Robô de vendas por número e por produto
 
-O CRM não depende de um número específico. Cada WhatsApp conectado tem um modo, escolhido no painel em **Assistente → Robô de vendas**:
+O CRM não depende de um número específico. Toda conversa de qualquer número conectado entra no CRM. O que o robô faz em cada número é escolhido na aba **Robô SDR**:
 
 | Modo | O que acontece quando um cliente chama |
 |---|---|
@@ -9,6 +9,17 @@ O CRM não depende de um número específico. Cada WhatsApp conectado tem um mod
 | **Vender produto** | Roteiro de venda de um produto do catálogo (anúncios / afiliados). |
 
 Um número sem configuração fica **Desligado**. A troca de modo vale na mensagem seguinte, sem reiniciar o servidor.
+
+## Comportamento de cada número
+
+| Campo | Para que serve |
+|---|---|
+| Esperar no mínimo / máximo | O robô sorteia uma espera entre os dois valores (até 20 s) antes de responder. 0 e 0 = responde na hora. |
+| Mostrar "digitando..." | Exibe "digitando..." para o cliente durante a espera. |
+| Horário de atendimento | Início, fim e dias da semana, no horário de Brasília. Pode atravessar a meia-noite. |
+| Fora do horário | **Mensagem de ausência** (uma vez por dia por cliente) ou **não responder**. O lead não muda de etapa; a origem do anúncio é gravada. |
+
+Se durante a espera uma pessoa responder, o cliente mandar outra mensagem ou o lead mudar de etapa, a resposta do robô é cancelada.
 
 ## Cadastro do produto
 
@@ -21,6 +32,11 @@ Um número sem configuração fica **Desligado**. A troca de modo vale na mensag
 | Origem dos anúncios | Gravada no lead quando ele chega com o código (padrão: Google Ads). |
 | Apresentação | Primeira mensagem do robô. |
 | O que o robô pode dizer | Base para responder dúvidas quando a IA está ligada. |
+| Tom da conversa | Cordial, próximo, formal ou direto. Vale para as respostas redigidas pela IA. |
+| IA neste produto | Permite ou não a IA neste produto (além da chave geral do servidor). |
+| Máximo de respostas automáticas | De 3 a 30 por cliente. Depois disso a conversa passa para você. Mensagens suas não contam, e a contagem recomeça quando você devolve o cliente ao robô. |
+| Objeções com resposta pronta | Uma por linha: `sem tempo, nao tenho tempo => resposta`. Quando o cliente usa a palavra, o robô envia exatamente a sua resposta. |
+| Parâmetro de rastreio | Ex.: `sck`. O link enviado leva o código do cliente nesse parâmetro, e a venda aprovada volta para o lead certo. |
 
 ## Link do anúncio
 
@@ -48,9 +64,29 @@ Regras fixas, fora do controle da IA:
 
 - O robô só conduz lead novo ou que já está no roteiro do produto. Cliente em outro estágio não é abordado.
 - Em atendimento humano o robô fica em silêncio até uma pessoa retomar.
-- Depois de 12 respostas automáticas para o mesmo lead, passa para atendimento humano.
+- Depois do máximo de respostas automáticas do produto (padrão 12), passa para atendimento humano.
+- Quem pediu para sair ou já comprou não volta ao roteiro sozinho, nem clicando de novo no anúncio. O roteiro Conta PJ também não fala com quem está no roteiro de um produto.
 - Resposta da IA com link diferente do oficial, ou com valor em reais que não está no cadastro, é descartada.
 - O robô só responde a quem chamou. Não há disparo em massa.
+
+## Fila "Aguardando você"
+
+Na aba Robô SDR (e no topo da conversa) aparecem os clientes que o robô passou para você. Depois de atender, use **Devolver ao robô**: ele volta a responder na próxima mensagem do cliente.
+
+## Confirmação de venda (webhook)
+
+Cadastre na plataforma de afiliado:
+
+```
+https://luis-chatbot-mvp.onrender.com/webhooks/affiliate-sale?token=<AFFILIATE_WEBHOOK_SECRET>&platform=<nome>
+```
+
+- Sem a variável `AFFILIATE_WEBHOOK_SECRET` no Render, o endereço responde 503 (fechado).
+- Venda aprovada: etapa **Convertido**, status **Venda aprovada**; o robô para de falar com o cliente.
+- Reembolso/chargeback: etapa **Reembolsado**. Pedido cancelado antes de pagar não altera nada.
+- Venda sem o código do cliente fica registrada como pendência (`AFFILIATE_SALE_UNMATCHED`).
+- Nome e e-mail do comprador não são gravados.
+- O formato é genérico: valide com uma venda de teste da plataforma escolhida.
 
 ## O que fica registrado
 
@@ -64,6 +100,6 @@ Arquivo `sdr-settings.json` na pasta de `WHATSAPP_QR_SESSION_DIR` (em produção
 
 ## Ainda não incluído
 
-- Confirmação automática da venda pela plataforma de afiliados.
+- Follow-up automático (lembrete depois de X horas sem resposta) — próxima etapa.
 - Envio da venda de volta ao Google Ads como conversão.
 - Página de produto com captura do identificador de clique do Google.
