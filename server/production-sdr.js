@@ -3,8 +3,45 @@ const { createOutboundMessageHandler } = require('./outbound-message');
 const { generate } = require('../backend/ai/provider');
 const { getConfig } = require('./config');
 const { calculateLeadScore } = require('../backend/sdr/scoring');
-const { getSdrSettingsStore } = require('./sdr-settings');
-const { resolveProduct, nextProductStep, buildAiContext, sanitizeAiReply, PRODUCT_FLOW_STATES } = require('../backend/sdr/product-playbook');
+const { getSdrSettingsStore, DEFAULT_AWAY_MESSAGE } = require('./sdr-settings');
+const { resolveProduct, nextProductStep, buildAiContext, sanitizeAiReply, PRODUCT_FLOW_STATES, HUMAN_GATES } = require('../backend/sdr/product-playbook');
+const { buildTrackedLink } = require('../backend/affiliate/tracking');
+
+const TIME_ZONE = 'America/Sao_Paulo';
+const WEEKDAY = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/** Dia da semana (0 = domingo), minutos desde 00:00 e data (AAAA-MM-DD) no fuso de São Paulo. */
+function localClock(date = new Date(), timeZone = TIME_ZONE) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+    timeZone, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date).map(p => [p.type, p.value]));
+  return { day: WEEKDAY[parts.weekday], minutes: Number(parts.hour) * 60 + Number(parts.minute), date: `${parts.year}-${parts.month}-${parts.day}` };
+}
+
+const toMinutes = hhmm => { const [h, m] = String(hhmm).split(':').map(Number); return h * 60 + m; };
+
+/**
+ * true quando o horário de atendimento está aberto.
+ * Aceita expediente que atravessa a meia-noite (ex.: 18:00 às 02:00): a madrugada
+ * conta como parte do dia em que o expediente começou.
+ */
+function withinBusinessHours(hours, date = new Date()) {
+  if (!hours || !hours.enabled) return true;
+  const { day, minutes } = localClock(date);
+  const start = toMinutes(hours.start), end = toMinutes(hours.end);
+  const days = new Set(hours.days || []);
+  if (start < end) return days.has(day) && minutes >= start && minutes < end;
+  if (minutes >= start) return days.has(day);
+  if (minutes < end) return days.has((day + 6) % 7);
+  return false;
+}
+
+function awayText(hours) {
+  const template = String(hours?.awayMessage || '').trim() || DEFAULT_AWAY_MESSAGE;
+  return template.replace(/\{inicio\}/g, hours.start).replace(/\{fim\}/g, hours.end);
+}
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * Gateway do SDR.
@@ -16,12 +53,60 @@ const { resolveProduct, nextProductStep, buildAiContext, sanitizeAiReply, PRODUC
  *   CONTA_PJ  roteiro original.
  * Sem `slot` (webhook oficial da Meta, testes antigos) o comportamento original é mantido.
  */
-function createProductionSdrGateway({ repository, sender, env = process.env, slot = null, settings = null, generateReply = generate } = {}) {
+function createProductionSdrGateway({ repository, sender, env = process.env, slot = null, settings = null, generateReply = generate, now = () => new Date(), wait = sleep, random = Math.random } = {}) {
   if (!repository || !sender) throw new Error('PRODUCTION_SDR_DEPENDENCIES_REQUIRED');
   const config = getConfig(env);
   const outbound = createOutboundMessageHandler({ repository, sender });
   const HUMAN_GATED = new Set([HUMAN, BLOCKED, SCHEDULE_GATE]);
   const store = slot === null || slot === undefined ? null : (settings || getSdrSettingsStore(env));
+
+  /**
+   * Espera configurada no número antes de responder, com "digitando..." quando o
+   * canal suporta. Nunca impede o envio: falha no aviso de digitação é ignorada.
+   */
+  async function humanPause(slotConfig, lead) {
+    const min = Number(slotConfig?.delayMin) || 0;
+    const max = Math.max(min, Number(slotConfig?.delayMax) || 0);
+    if (max <= 0) return 0;
+    const ms = Math.round((min + random() * (max - min)) * 1000);
+    if (slotConfig.typing !== false && typeof sender.sendTyping === 'function') {
+      try { await sender.sendTyping({ to: lead.phone || null, jid: lead.whatsappJid || lead.whatsapp_jid || null }); }
+      catch (error) { console.warn('SDR_TYPING_FAILED', error?.message || 'TYPING_ERROR'); }
+    }
+    await wait(ms);
+    return ms;
+  }
+
+  /** Fora do horário: mensagem de ausência (uma vez por dia por lead) ou silêncio. O lead não muda. */
+  async function outsideHours({ lead, message, slotConfig }) {
+    const status = String(lead.status || '').toUpperCase();
+    const base = { status: lead.status || 'NEW', handoff: false, replySent: false, mode: slotConfig.mode, outsideHours: true };
+    // Conversa com uma pessoa ou cliente que pediu para sair: o robô não interfere.
+    if (HUMAN_GATES.has(status) || status === 'LOST') return base;
+    // Lead que chega por anúncio fora do horário: a origem é gravada agora, para o
+    // robô saber o produto quando o cliente voltar a escrever sem o código.
+    if (slotConfig.mode === 'PRODUCT') {
+      const resolved = resolveProduct({ text: message.text || '', lead, products: slotConfig.products, slotProductId: slotConfig.productId });
+      if (resolved.product && resolved.via === 'CODE' && String(lead.campaign || '').toUpperCase() !== resolved.ref) {
+        await repository.updateLead(lead.id, { interest: resolved.product.name, campaign: resolved.ref, source: resolved.product.source, updatedAt: new Date().toISOString() });
+      }
+    }
+    const key = message.external_message_id || `${lead.id}:${Date.now()}`;
+    if (slotConfig.hours.outside === 'SILENT') {
+      if (typeof repository.createEvent === 'function') await repository.createEvent({ lead_id: lead.id, type: 'SDR_OUTSIDE_HOURS', idempotency_key: `SDR_OUTSIDE_HOURS:${key}`, payload: { slot, mode: slotConfig.mode } });
+      return base;
+    }
+    const { date } = localClock(now());
+    if (typeof repository.listEvents === 'function') {
+      try {
+        const rows = await repository.listEvents({ leadId: lead.id, type: 'SDR_AWAY_MESSAGE', limit: 5 });
+        if ((rows || []).some(row => row?.payload?.date === date)) return base;
+      } catch (error) { console.warn('SDR_AWAY_LOOKUP_FAILED', error?.message || 'LOOKUP_ERROR'); return base; }
+    }
+    await outbound({ lead, text: awayText(slotConfig.hours) });
+    if (typeof repository.createEvent === 'function') await repository.createEvent({ lead_id: lead.id, type: 'SDR_AWAY_MESSAGE', idempotency_key: `SDR_AWAY_MESSAGE:${lead.id}:${date}`, payload: { slot, date } });
+    return { ...base, replySent: true };
+  }
 
   async function processProduct({ lead, message, slotConfig }) {
     const text = message.text || '';
@@ -31,7 +116,11 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
       console.warn('SDR_PRODUCT_NOT_CONFIGURED', { slot });
       return { status: lead.status || 'NEW', handoff: false, replySent: false, mode: 'PRODUCT', skipped: 'PRODUCT_NOT_CONFIGURED' };
     }
-    const product = resolved.product;
+    // O link enviado leva o token do lead quando o produto tem parâmetro de rastreio:
+    // é assim que o webhook de venda encontra o lead depois da compra.
+    let product = resolved.product;
+    try { product = { ...product, link: buildTrackedLink(product, lead.id) }; }
+    catch (error) { console.warn('SDR_TRACKING_LINK_FAILED', error?.message || 'TRACKING_ERROR'); }
 
     let rows = [];
     if (typeof repository.listMessages === 'function') {
@@ -52,7 +141,7 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
     let final = step;
     let aiAssist = false;
 
-    if (step.aiEligible && config.aiAssistEnabled) {
+    if (step.aiEligible && config.aiAssistEnabled && product.aiEnabled !== false) {
       try {
         const decision = { status: step.aiStatus, nextAction: 'RESPONDER_DUVIDA_SOBRE_O_PRODUTO', reply: null };
         const generated = await generateReply({ lead, text, decision, history, context: buildAiContext(product) });
@@ -89,7 +178,10 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
     if (final.handoff && final.reply && typeof repository.createEvent === 'function') {
       await repository.createEvent({ lead_id: lead.id, type: 'SDR_HUMAN_GATE', idempotency_key: `SDR_HUMAN_GATE:${key}`, payload: { status: final.status, nextAction: final.nextAction || null, handoff: true, mode: 'PRODUCT', productId: product.id, reason: final.intent } });
     }
-    if (final.reply) await outbound({ lead, text: final.reply });
+    if (final.reply) {
+      await humanPause(slotConfig, lead);
+      await outbound({ lead, text: final.reply });
+    }
     if (final.linkSent && typeof repository.createEvent === 'function') {
       await repository.createEvent({ lead_id: lead.id, type: 'PRODUCT_LINK_SENT', idempotency_key: `PRODUCT_LINK_SENT:${key}`, payload: { productId: product.id, campaign: resolved.ref || product.code || null, slot } });
     }
@@ -99,9 +191,11 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
 
   return {
     async process({ lead, message }) {
+      let slotConfig = null;
       if (store) {
-        const slotConfig = store.slotConfig(slot);
+        slotConfig = store.slotConfig(slot);
         if (slotConfig.mode === 'OFF') return { status: lead.status || 'NEW', handoff: false, replySent: false, mode: 'OFF' };
+        if (slotConfig.hours?.enabled && !withinBusinessHours(slotConfig.hours, now())) return outsideHours({ lead, message, slotConfig });
         if (slotConfig.mode === 'PRODUCT') return processProduct({ lead, message, slotConfig });
       }
       const decision = processEvent({ lead, text: message.text || '', externalMessageId: message.external_message_id });
@@ -163,7 +257,10 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
         });
       }
 
-      if (finalDecision.reply && finalDecision.status !== HUMAN) await outbound({ lead, text: finalDecision.reply });
+      if (finalDecision.reply && finalDecision.status !== HUMAN) {
+        if (slotConfig) await humanPause(slotConfig, lead);
+        await outbound({ lead, text: finalDecision.reply });
+      }
 
       return {
         status: finalDecision.status,
@@ -178,4 +275,4 @@ function createProductionSdrGateway({ repository, sender, env = process.env, slo
   };
 }
 
-module.exports = { createProductionSdrGateway };
+module.exports = { createProductionSdrGateway, withinBusinessHours, localClock, awayText };

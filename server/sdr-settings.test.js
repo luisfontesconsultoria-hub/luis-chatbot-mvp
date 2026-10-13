@@ -2,7 +2,9 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { createSdrSettingsStore, normalizeProduct, defaultFile } = require('./sdr-settings');
+const { createSdrSettingsStore, normalizeProduct, normalizeBehavior, normalizeObjections, defaultFile, defaultBehavior } = require('./sdr-settings');
+const D = defaultBehavior();
+const pick = ({ slot, mode, productId }) => ({ slot, mode, productId });
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sdr-settings-'));
 const file = path.join(dir, 'nested', 'sdr-settings.json');
@@ -51,8 +53,8 @@ try {
   assert.equal(code(() => store.setSlot(7, { mode: 'OFF' })), 'INVALID_SLOT');
   assert.equal(code(() => store.setSlot(1, { mode: 'PRODUCT' })), 'PRODUCT_REQUIRED_FOR_MODE');
   assert.equal(code(() => store.setSlot(1, { mode: 'PRODUCT', productId: 'nao-existe' })), 'PRODUCT_REQUIRED_FOR_MODE');
-  assert.deepEqual(store.setSlot(2, { mode: 'PRODUCT', productId: 'metodo-x' }), { slot: 2, mode: 'PRODUCT', productId: 'metodo-x' });
-  assert.deepEqual(store.setSlot(1, { mode: 'conta_pj', productId: 'metodo-x' }), { slot: 1, mode: 'CONTA_PJ', productId: null });
+  assert.deepEqual(store.setSlot(2, { mode: 'PRODUCT', productId: 'metodo-x' }), { slot: 2, mode: 'PRODUCT', productId: 'metodo-x', ...D });
+  assert.deepEqual(pick(store.setSlot(1, { mode: 'conta_pj', productId: 'metodo-x' })), { slot: 1, mode: 'CONTA_PJ', productId: null });
   const cfg = store.slotConfig(2);
   assert.equal(cfg.mode, 'PRODUCT');
   assert.equal(cfg.productId, 'metodo-x');
@@ -90,7 +92,36 @@ try {
   const tampered = path.join(dir, 'tampered.json');
   fs.writeFileSync(tampered, JSON.stringify({ slots: { 1: { mode: 'PRODUCT', productId: 'fantasma' }, 2: { mode: 'XYZ' }, 99: { mode: 'CONTA_PJ' } }, products: [{ name: 'Sem link' }, { id: 'ok', name: 'Ok', link: 'https://exemplo.com/ok' }] }));
   const t = createSdrSettingsStore({ file: tampered });
-  assert.deepEqual(t.get().slots, { 1: { mode: 'PRODUCT', productId: null }, 2: { mode: 'OFF', productId: null } });
+  assert.deepEqual(t.get().slots, { 1: { mode: 'PRODUCT', productId: null, ...D }, 2: { mode: 'OFF', productId: null, ...D } });
+
+  // Comportamento do número: tempo de resposta e horário
+  assert.deepEqual(D, { delayMin: 0, delayMax: 0, typing: true, hours: { enabled: false, start: '08:00', end: '20:00', days: [1, 2, 3, 4, 5, 6], outside: 'AWAY', awayMessage: '' } });
+  assert.equal(code(() => normalizeBehavior({ delayMin: 10, delayMax: 5 })), 'DELAY_RANGE_INVALID');
+  assert.equal(normalizeBehavior({ delayMin: -4, delayMax: 999 }).delayMax, 40, 'espera limitada a 40s (cabe no prazo do pipeline)');
+  assert.equal(normalizeBehavior({ delayMin: -4, delayMax: 999 }).delayMin, 0);
+  assert.equal(code(() => normalizeBehavior({ hours: { start: '8h' } })), 'HOURS_INVALID');
+  assert.equal(code(() => normalizeBehavior({ hours: { start: '10:00', end: '10:00' } })), 'HOURS_INVALID');
+  assert.equal(code(() => normalizeBehavior({ hours: { outside: 'GRITAR' } })), 'HOURS_INVALID');
+  assert.equal(code(() => normalizeBehavior({ hours: { enabled: true, days: [] } })), 'HOURS_DAYS_REQUIRED');
+  assert.deepEqual(normalizeBehavior({ hours: { days: '5,1,1,9' } }).hours.days, [1, 5], 'dias inválidos e repetidos são descartados');
+  const behaved = createSdrSettingsStore({ file: path.join(dir, 'behavior.json') });
+  behaved.saveProduct({ name: 'P', link: 'https://exemplo.com/p' });
+  behaved.setSlot(1, { mode: 'CONTA_PJ', delayMin: 2, delayMax: 6, hours: { enabled: true, start: '09:00', end: '18:00' } });
+  behaved.setSlot(1, { mode: 'OFF' });
+  assert.deepEqual([behaved.slotConfig(1).delayMax, behaved.slotConfig(1).hours.enabled], [6, true], 'trocar só o modo mantém o comportamento salvo');
+  assert.equal(createSdrSettingsStore({ file: path.join(dir, 'behavior.json') }).slotConfig(1).hours.start, '09:00');
+
+  // Campos novos do produto
+  const full = normalizeProduct({ name: 'Z', link: 'https://exemplo.com/z', tone: 'formal', aiEnabled: 'false', maxReplies: 1, trackingParam: 'src', objections: 'caro, Muito Caro => Dá para parcelar.\n\nsem tempo => Aulas gravadas.' });
+  assert.deepEqual([full.tone, full.aiEnabled, full.maxReplies, full.trackingParam], ['FORMAL', false, 3, 'src']);
+  assert.deepEqual(full.objections, [{ keywords: ['caro', 'muito caro'], answer: 'Dá para parcelar.' }, { keywords: ['sem tempo'], answer: 'Aulas gravadas.' }]);
+  const plain = normalizeProduct({ name: 'Z', link: 'https://exemplo.com/z' });
+  assert.deepEqual([plain.tone, plain.aiEnabled, plain.maxReplies, plain.trackingParam, plain.objections], ['NEUTRO', true, 12, null, []]);
+  assert.equal(code(() => normalizeProduct({ name: 'Z', link: 'https://exemplo.com/z', tone: 'GRITANDO' })), 'PRODUCT_TONE_INVALID');
+  assert.equal(code(() => normalizeProduct({ name: 'Z', link: 'https://exemplo.com/z', trackingParam: 'a b' })), 'PRODUCT_TRACKING_PARAM_INVALID');
+  assert.equal(code(() => normalizeObjections('sem seta')), 'OBJECTION_FORMAT_INVALID');
+  assert.equal(code(() => normalizeObjections('ab => curta demais a palavra')), 'OBJECTION_FORMAT_INVALID', 'palavra-chave com menos de 3 letras');
+  assert.equal(code(() => normalizeObjections('caro =>   ')), 'OBJECTION_FORMAT_INVALID', 'resposta vazia');
   assert.equal(t.get().products.length, 1);
 
   // Local do arquivo e aviso de disco temporário

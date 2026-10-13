@@ -13,6 +13,9 @@ process.env.AI_ASSIST_ENABLED = 'false';
 delete process.env.SUPABASE_URL;
 
 const { routeRequest } = require('./routes');
+const { defaultBehavior } = require('./sdr-settings');
+const D = defaultBehavior();
+const pick = ({ slot, mode, productId }) => ({ slot, mode, productId });
 const auth = require('./auth');
 
 (async () => {
@@ -33,7 +36,10 @@ const auth = require('./auth');
     // Estado inicial: todos os números desligados
     let r = await call('GET', '/api/sdr/settings', {}, headers);
     assert.equal(r.status, 200);
-    assert.deepEqual(r.body.slots, [{ slot: 1, mode: 'OFF', productId: null }, { slot: 2, mode: 'OFF', productId: null }]);
+    assert.deepEqual(r.body.slots, [{ slot: 1, mode: 'OFF', productId: null, ...D }, { slot: 2, mode: 'OFF', productId: null, ...D }]);
+    assert.deepEqual(r.body.tones, ['NEUTRO', 'PROXIMO', 'FORMAL', 'DIRETO']);
+    assert.deepEqual(r.body.outsideHours, ['AWAY', 'SILENT']);
+    assert.ok(r.body.defaultAwayMessage.includes('{inicio}'));
     assert.deepEqual(r.body.products, []);
     assert.deepEqual(r.body.ai, { enabled: false, provider: null });
     assert.deepEqual(r.body.modes, ['OFF', 'CONTA_PJ', 'PRODUCT']);
@@ -54,10 +60,33 @@ const auth = require('./auth');
     r = await call('POST', '/api/sdr/slots/3', { mode: 'CONTA_PJ' }, headers);
     assert.deepEqual([r.status, r.body.error], [400, 'INVALID_SLOT'], 'número acima do limite configurado é recusado');
     r = await call('POST', '/api/sdr/slots/1', { mode: 'PRODUCT', productId: 'metodo-x' }, headers);
-    assert.deepEqual(r.body, { ok: true, slot: { slot: 1, mode: 'PRODUCT', productId: 'metodo-x' } });
+    assert.equal(r.body.ok, true);
+    assert.deepEqual(pick(r.body.slot), { slot: 1, mode: 'PRODUCT', productId: 'metodo-x' });
+
+    // Tempo de resposta e horário de atendimento pelo painel
+    r = await call('POST', '/api/sdr/slots/1', { mode: 'PRODUCT', productId: 'metodo-x', delayMin: 9, delayMax: 3 }, headers);
+    assert.deepEqual([r.status, r.body.error, r.body.field], [400, 'DELAY_RANGE_INVALID', 'delayMax']);
+    r = await call('POST', '/api/sdr/slots/1', { mode: 'PRODUCT', productId: 'metodo-x', hours: { enabled: true, start: '25:00', end: '18:00' } }, headers);
+    assert.deepEqual([r.status, r.body.error], [400, 'HOURS_INVALID']);
+    r = await call('POST', '/api/sdr/slots/1', { mode: 'PRODUCT', productId: 'metodo-x', hours: { enabled: true, days: [] } }, headers);
+    assert.deepEqual([r.status, r.body.error], [400, 'HOURS_DAYS_REQUIRED']);
+    r = await call('POST', '/api/sdr/slots/1', { mode: 'PRODUCT', productId: 'metodo-x', delayMin: 3, delayMax: 9, typing: false, hours: { enabled: true, start: '09:00', end: '18:00', days: [1, 2, 3, 4, 5], outside: 'SILENT' } }, headers);
+    assert.equal(r.status, 200);
+    assert.deepEqual([r.body.slot.delayMin, r.body.slot.delayMax, r.body.slot.typing, r.body.slot.hours.outside], [3, 9, false, 'SILENT']);
+
+    // Produto com tom, IA, limite, rastreio e objeções
+    r = await call('POST', '/api/sdr/products', { id: 'metodo-x', name: 'Método X', code: 'EMAG', link: 'https://exemplo.com/metodo-x', objections: 'linha sem seta' }, headers);
+    assert.deepEqual([r.status, r.body.error, r.body.field], [400, 'OBJECTION_FORMAT_INVALID', 'objections']);
+    r = await call('POST', '/api/sdr/products', { id: 'metodo-x', name: 'Método X', code: 'EMAG', link: 'https://exemplo.com/metodo-x', trackingParam: 'sck?x' }, headers);
+    assert.deepEqual([r.status, r.body.error], [400, 'PRODUCT_TRACKING_PARAM_INVALID']);
+    r = await call('POST', '/api/sdr/products', { id: 'metodo-x', name: 'Método X', code: 'EMAG', link: 'https://exemplo.com/metodo-x', tone: 'DIRETO', aiEnabled: false, maxReplies: 99, trackingParam: 'sck', objections: 'Sem tempo, não tenho tempo => As aulas ficam gravadas.' }, headers);
+    assert.equal(r.status, 200);
+    assert.deepEqual([r.body.product.tone, r.body.product.aiEnabled, r.body.product.maxReplies, r.body.product.trackingParam], ['DIRETO', false, 30, 'sck']);
+    assert.deepEqual(r.body.product.objections, [{ keywords: ['sem tempo', 'nao tenho tempo'], answer: 'As aulas ficam gravadas.' }]);
 
     r = await call('GET', '/api/sdr/settings', {}, headers);
-    assert.deepEqual(r.body.slots[0], { slot: 1, mode: 'PRODUCT', productId: 'metodo-x' });
+    assert.deepEqual(pick(r.body.slots[0]), { slot: 1, mode: 'PRODUCT', productId: 'metodo-x' });
+    assert.equal(r.body.slots[0].hours.enabled, true);
     assert.equal(r.body.products.length, 1);
 
     // Remoção

@@ -15,9 +15,91 @@ const path = require('path');
 const { normalizeSource } = require('../backend/core/acquisition-sources');
 
 const MODES = Object.freeze(['OFF', 'CONTA_PJ', 'PRODUCT']);
+const TONES = Object.freeze(['NEUTRO', 'PROXIMO', 'FORMAL', 'DIRETO']);
+const OUTSIDE_HOURS = Object.freeze(['AWAY', 'SILENT']);
 const MAX_SLOTS = 4;
 const MAX_PRODUCTS = 50;
-const LIMITS = Object.freeze({ name: 80, code: 20, pitch: 600, knowledge: 6000, price: 80, link: 500 });
+const MAX_OBJECTIONS = 20;
+const LIMITS = Object.freeze({
+  name: 80, code: 20, pitch: 600, knowledge: 6000, price: 80, link: 500,
+  trackingParam: 30, objectionAnswer: 600, objectionKeyword: 60, awayMessage: 400,
+  maxRepliesMin: 3, maxRepliesMax: 30, delayMaxSeconds: 40
+});
+const DEFAULT_MAX_REPLIES = 12;
+const DEFAULT_AWAY_MESSAGE = 'Olá! Recebemos sua mensagem. Nosso atendimento é das {inicio} às {fim}. Assim que abrirmos, te respondemos por aqui.';
+
+/** Comportamento de atendimento de um número: tempo de resposta e horário. */
+function defaultBehavior() {
+  return {
+    delayMin: 0, delayMax: 0, typing: true,
+    hours: { enabled: false, start: '08:00', end: '20:00', days: [1, 2, 3, 4, 5, 6], outside: 'AWAY', awayMessage: '' }
+  };
+}
+
+function plainKeyword(value) {
+  return String(value || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.objectionKeyword);
+}
+
+/**
+ * Objeções com resposta aprovada. Aceita a lista estruturada ou o texto do painel,
+ * uma por linha: "sem tempo, nao tenho tempo => Resposta aprovada".
+ */
+function normalizeObjections(input) {
+  let items = [];
+  if (Array.isArray(input)) items = input;
+  else if (typeof input === 'string') {
+    items = input.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
+      const at = line.indexOf('=>');
+      if (at < 0) throw settingsError('OBJECTION_FORMAT_INVALID', 'objections');
+      return { keywords: line.slice(0, at).split(','), answer: line.slice(at + 2) };
+    });
+  }
+  const out = [];
+  for (const item of items.slice(0, MAX_OBJECTIONS)) {
+    const keywords = (Array.isArray(item?.keywords) ? item.keywords : String(item?.keywords || '').split(','))
+      .map(plainKeyword).filter(k => k.length >= 3).slice(0, 10);
+    const answer = text(item?.answer, LIMITS.objectionAnswer);
+    if (!keywords.length || !answer) throw settingsError('OBJECTION_FORMAT_INVALID', 'objections');
+    out.push({ keywords, answer });
+  }
+  return out;
+}
+
+function clampInt(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/** Valida tempo de resposta e horário vindos do painel. Lança erro com code/field. */
+function normalizeBehavior(input = {}, current = defaultBehavior()) {
+  const base = { ...current, hours: { ...current.hours } };
+  const delayMin = input.delayMin === undefined ? base.delayMin : clampInt(input.delayMin, 0, LIMITS.delayMaxSeconds, 0);
+  const delayMax = input.delayMax === undefined ? base.delayMax : clampInt(input.delayMax, 0, LIMITS.delayMaxSeconds, 0);
+  if (delayMax < delayMin) throw settingsError('DELAY_RANGE_INVALID', 'delayMax');
+  const typing = input.typing === undefined ? base.typing : input.typing !== false && input.typing !== 'false';
+  const h = input.hours && typeof input.hours === 'object' ? input.hours : {};
+  const enabled = h.enabled === undefined ? base.hours.enabled : h.enabled === true || h.enabled === 'true';
+  const start = h.start === undefined ? base.hours.start : String(h.start).trim();
+  const end = h.end === undefined ? base.hours.end : String(h.end).trim();
+  if (!HHMM.test(start)) throw settingsError('HOURS_INVALID', 'hours.start');
+  if (!HHMM.test(end)) throw settingsError('HOURS_INVALID', 'hours.end');
+  if (start === end) throw settingsError('HOURS_INVALID', 'hours.end');
+  let days = h.days === undefined ? base.hours.days : h.days;
+  if (typeof days === 'string') days = days.split(',');
+  days = [...new Set((Array.isArray(days) ? days : []).map(Number).filter(d => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
+  if (enabled && !days.length) throw settingsError('HOURS_DAYS_REQUIRED', 'hours.days');
+  const outside = h.outside === undefined ? base.hours.outside : String(h.outside).toUpperCase();
+  if (!OUTSIDE_HOURS.includes(outside)) throw settingsError('HOURS_INVALID', 'hours.outside');
+  const awayMessage = h.awayMessage === undefined ? base.hours.awayMessage : text(h.awayMessage, LIMITS.awayMessage);
+  return { delayMin, delayMax, typing, hours: { enabled, start, end, days, outside, awayMessage } };
+}
+
+function safeBehavior(raw) {
+  try { return normalizeBehavior(raw || {}); } catch (_) { return defaultBehavior(); }
+}
 
 function defaultFile(env = process.env) {
   if (env.SDR_SETTINGS_FILE) return env.SDR_SETTINGS_FILE;
@@ -53,13 +135,22 @@ function normalizeProduct(input = {}, existingId = null) {
   if (code && !/^[A-Z0-9]{3,20}$/.test(code)) throw settingsError('PRODUCT_CODE_INVALID', 'code');
   const id = existingId || slugify(input.id) || slugify(name);
   if (!id) throw settingsError('PRODUCT_NAME_REQUIRED', 'name');
+  const trackingParam = text(input.trackingParam, LIMITS.trackingParam);
+  if (trackingParam && !/^[A-Za-z0-9_]{1,30}$/.test(trackingParam)) throw settingsError('PRODUCT_TRACKING_PARAM_INVALID', 'trackingParam');
+  const tone = String(input.tone || 'NEUTRO').toUpperCase();
+  if (!TONES.includes(tone)) throw settingsError('PRODUCT_TONE_INVALID', 'tone');
   return {
     id, name, code: code || null, link,
     price: text(input.price, LIMITS.price) || null,
     pitch: text(input.pitch, LIMITS.pitch),
     knowledge: text(input.knowledge, LIMITS.knowledge),
     source: normalizeSource(input.source || 'GOOGLE_ADS'),
-    active: input.active !== false
+    active: input.active !== false && input.active !== 'false',
+    trackingParam: trackingParam || null,
+    tone,
+    aiEnabled: input.aiEnabled !== false && input.aiEnabled !== 'false',
+    maxReplies: clampInt(input.maxReplies, LIMITS.maxRepliesMin, LIMITS.maxRepliesMax, DEFAULT_MAX_REPLIES),
+    objections: normalizeObjections(input.objections ?? [])
   };
 }
 
@@ -76,7 +167,7 @@ function sanitizeState(raw) {
     if (!Number.isInteger(id) || id < 1 || id > MAX_SLOTS) continue;
     const mode = MODES.includes(cfg?.mode) ? cfg.mode : 'OFF';
     const productId = state.products.some(p => p.id === cfg?.productId) ? cfg.productId : null;
-    state.slots[String(id)] = { mode, productId };
+    state.slots[String(id)] = { mode, productId, ...safeBehavior(cfg) };
   }
   return state;
 }
@@ -117,21 +208,28 @@ function createSdrSettingsStore({ file = defaultFile(), fsImpl = fs } = {}) {
 
     get() {
       const state = load();
-      return { products: state.products.map(p => ({ ...p })), slots: Object.fromEntries(Object.entries(state.slots).map(([k, v]) => [k, { ...v }])) };
+      return {
+        products: state.products.map(p => ({ ...p, objections: p.objections.map(o => ({ keywords: [...o.keywords], answer: o.answer })) })),
+        slots: Object.fromEntries(Object.entries(state.slots).map(([k, v]) => [k, { ...v, hours: { ...v.hours, days: [...v.hours.days] } }]))
+      };
     },
 
     /** Configuração efetiva de um número. Nunca lança: qualquer problema vira OFF. */
     slotConfig(slot) {
-      const off = { mode: 'OFF', productId: null, products: [] };
+      const off = { mode: 'OFF', productId: null, products: [], ...defaultBehavior() };
       let id;
       try { id = slotId(slot); } catch (_) { return off; }
       const state = load();
       const cfg = state.slots[String(id)];
       if (!cfg) return { ...off, products: state.products };
-      return { mode: cfg.mode, productId: cfg.productId, products: state.products };
+      return { ...cfg, hours: { ...cfg.hours }, products: state.products };
     },
 
-    setSlot(slot, { mode, productId = null } = {}) {
+    /**
+     * Grava o modo e o comportamento de um número. Campos de comportamento omitidos
+     * mantêm o valor atual, então o painel pode salvar só o que mudou.
+     */
+    setSlot(slot, { mode, productId = null, ...behavior } = {}) {
       const id = slotId(slot);
       const nextMode = String(mode || '').toUpperCase();
       if (!MODES.includes(nextMode)) throw settingsError('INVALID_MODE', 'mode');
@@ -143,7 +241,9 @@ function createSdrSettingsStore({ file = defaultFile(), fsImpl = fs } = {}) {
         if (product.active === false) throw settingsError('PRODUCT_INACTIVE', 'productId');
         nextProduct = product.id;
       }
-      const next = { ...state, slots: { ...state.slots, [String(id)]: { mode: nextMode, productId: nextProduct } } };
+      const current = state.slots[String(id)];
+      const nextBehavior = normalizeBehavior(behavior, current ? { delayMin: current.delayMin, delayMax: current.delayMax, typing: current.typing, hours: current.hours } : defaultBehavior());
+      const next = { ...state, slots: { ...state.slots, [String(id)]: { mode: nextMode, productId: nextProduct, ...nextBehavior } } };
       persist(next);
       return { slot: id, ...next.slots[String(id)] };
     },
@@ -182,4 +282,8 @@ function getSdrSettingsStore(env = process.env) {
   return shared;
 }
 
-module.exports = { MODES, MAX_SLOTS, LIMITS, defaultFile, normalizeProduct, slugify, createSdrSettingsStore, getSdrSettingsStore };
+module.exports = {
+  MODES, TONES, OUTSIDE_HOURS, MAX_SLOTS, LIMITS, DEFAULT_MAX_REPLIES, DEFAULT_AWAY_MESSAGE,
+  defaultFile, defaultBehavior, normalizeProduct, normalizeBehavior, normalizeObjections, slugify,
+  createSdrSettingsStore, getSdrSettingsStore
+};

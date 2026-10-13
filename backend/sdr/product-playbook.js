@@ -12,6 +12,7 @@
 const PRODUCT_STATES = Object.freeze({
   PRESENTED: 'PRODUCT_PRESENTED',
   LINK_SENT: 'PRODUCT_LINK_SENT',
+  SOLD: 'PRODUCT_SOLD',
   HUMAN: 'HUMAN_HANDOFF',
   LOST: 'LOST'
 });
@@ -21,7 +22,8 @@ const HUMAN_GATES = new Set(['HUMAN_HANDOFF', 'AGUARDANDO_RETORNO_DO_LUIS', 'AGU
 const START_STATES = new Set(['', 'NEW', 'NOVO']);
 const PRODUCT_FLOW_STATES = new Set([PRODUCT_STATES.PRESENTED, PRODUCT_STATES.LINK_SENT]);
 
-// Teto de respostas automáticas por lead: evita conversa infinita e custo de IA sem controle.
+// Teto padrão de respostas automáticas por lead: evita conversa infinita e custo de IA sem controle.
+// Cada produto pode definir o seu (product.maxReplies) no painel.
 const MAX_BOT_REPLIES = 12;
 const MAX_AI_REPLY_CHARS = 900;
 
@@ -65,6 +67,18 @@ function findRef(text = '') {
   const suffix = String(m[2] || m[4] || '').toUpperCase();
   if (!code) return null;
   return { code, suffix: suffix || null, ref: suffix ? `${code}-${suffix}` : code };
+}
+
+/** Objeção cadastrada no produto cuja palavra-chave aparece na mensagem. Resposta aprovada, sem IA. */
+function matchObjection(text = '', product = {}) {
+  const q = ` ${normalize(text).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ')} `;
+  for (const item of Array.isArray(product.objections) ? product.objections : []) {
+    for (const keyword of item.keywords || []) {
+      const k = normalize(keyword).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+      if (k && q.includes(` ${k} `)) return item;
+    }
+  }
+  return null;
 }
 
 function activeProducts(products = []) {
@@ -161,7 +175,8 @@ function nextProductStep({ lead = {}, text = '', product, botReplies = 0, restar
   // (ex.: cliente antigo, roteiro de Conta PJ) fica para atendimento manual.
   if (!PRODUCT_FLOW_STATES.has(state)) return { status: raw, reply: null, intent: 'OUT_OF_FLOW', handoff: false, nextAction: lead.nextAction || null, linkSent: false };
 
-  if (botReplies >= MAX_BOT_REPLIES) return handoff(HANDOFF_TEXT, 'REPLY_LIMIT');
+  const limit = Number.isInteger(product.maxReplies) && product.maxReplies > 0 ? product.maxReplies : MAX_BOT_REPLIES;
+  if (botReplies >= limit) return handoff(HANDOFF_TEXT, 'REPLY_LIMIT');
 
   if (intent === 'NON_TEXT') return { status: state, reply: 'Recebi sua mensagem, mas por aqui só consigo ler texto. Pode escrever sua dúvida?', intent, handoff: false, nextAction: 'AGUARDAR_RESPOSTA', linkSent: false };
 
@@ -172,6 +187,12 @@ function nextProductStep({ lead = {}, text = '', product, botReplies = 0, restar
       ? `O valor de ${product.name} é ${product.price}.\n\nPágina oficial: ${product.link}`
       : `O valor atualizado e as condições estão na página oficial:\n${product.link}`;
     return { status: PRODUCT_STATES.LINK_SENT, reply, intent, handoff: false, nextAction: 'AGUARDAR_COMPRA', linkSent: true };
+  }
+
+  // Objeção com resposta aprovada no cadastro: vem antes da IA e nunca é reescrita.
+  if (intent === 'QUESTION') {
+    const objection = matchObjection(text, product);
+    if (objection) return { status: state, reply: objection.answer, intent: 'OBJECTION', handoff: false, nextAction: state === PRODUCT_STATES.LINK_SENT ? 'AGUARDAR_COMPRA' : 'AGUARDAR_RESPOSTA', linkSent: false };
   }
 
   if (intent === 'ACK') return { status: state, reply: 'Combinado! Fico à disposição por aqui se surgir alguma dúvida.', intent, handoff: false, nextAction: state === PRODUCT_STATES.LINK_SENT ? 'AGUARDAR_COMPRA' : 'AGUARDAR_RESPOSTA', linkSent: false };
@@ -190,6 +211,13 @@ function nextProductStep({ lead = {}, text = '', product, botReplies = 0, restar
   };
 }
 
+const TONE_TEXT = Object.freeze({
+  NEUTRO: 'Tom cordial e natural.',
+  PROXIMO: 'Tom próximo e descontraído, como uma conversa entre conhecidos, sem gírias pesadas.',
+  FORMAL: 'Tom formal e respeitoso, tratando o cliente por "você" sem intimidade.',
+  DIRETO: 'Tom direto e objetivo: responda o essencial em poucas palavras.'
+});
+
 /** Texto de apoio entregue à IA. Tudo o que ela pode afirmar sobre o produto está aqui. */
 function buildAiContext(product) {
   return [
@@ -200,6 +228,7 @@ function buildAiContext(product) {
     '- Não prometa resultado. Não faça afirmação de saúde, renda ou ganho garantido.',
     '- Não escreva links nem endereços de site: o sistema envia o link oficial.',
     '- Responda em até 3 frases curtas, em português do Brasil, tom natural de WhatsApp.',
+    `- ${TONE_TEXT[product.tone] || TONE_TEXT.NEUTRO}`,
     '',
     'PRODUTO:',
     `Nome: ${product.name}`,
@@ -229,7 +258,7 @@ function sanitizeAiReply(candidate, product) {
 }
 
 module.exports = {
-  PRODUCT_STATES, HUMAN_GATES, PRODUCT_FLOW_STATES, MAX_BOT_REPLIES, MAX_AI_REPLY_CHARS,
-  normalize, detectIntent, findRef, resolveProduct, nextProductStep,
+  PRODUCT_STATES, HUMAN_GATES, PRODUCT_FLOW_STATES, MAX_BOT_REPLIES, MAX_AI_REPLY_CHARS, TONE_TEXT,
+  normalize, detectIntent, findRef, resolveProduct, nextProductStep, matchObjection,
   linkMessage, presentation, buildAiContext, sanitizeAiReply
 };
