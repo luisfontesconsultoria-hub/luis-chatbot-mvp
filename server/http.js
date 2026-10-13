@@ -63,9 +63,15 @@ const server = http.createServer((req, res) => {
     try {
       body = rawBody ? JSON.parse(rawBody) : {};
     } catch {
-      res.statusCode = 400;
-      res.end(JSON.stringify({ error: 'INVALID_JSON' }));
-      return;
+      // Algumas plataformas de afiliado enviam o webhook de venda como formulário.
+      const isAffiliateForm = String(req.url || '').startsWith('/webhooks/affiliate-sale')
+        && String(req.headers['content-type'] || '').includes('application/x-www-form-urlencoded');
+      if (!isAffiliateForm) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'INVALID_JSON' }));
+        return;
+      }
+      body = Object.fromEntries(new URLSearchParams(rawBody));
     }
 
     const url = new URL(req.url || '/', 'http://localhost');

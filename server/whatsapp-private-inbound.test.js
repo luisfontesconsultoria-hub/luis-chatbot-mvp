@@ -4,6 +4,9 @@
 // Cenários: LID-only, remoteJidAlt, participantPn, grupo, chamada pendurada, phone NOT NULL, logs Signal.
 const assert=require('assert');const fs=require('fs');const os=require('os');const path=require('path');const {EventEmitter}=require('events');
 const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'wa-private-'));
+// O robô agora é configurado por número e o padrão é desligado. Estes cenários validam o
+// roteiro Conta PJ respondendo, então os 4 números são ligados nesse modo.
+fs.writeFileSync(path.join(tmp,'sdr-settings.json'),JSON.stringify({slots:{1:{mode:'CONTA_PJ'},2:{mode:'CONTA_PJ'},3:{mode:'CONTA_PJ'},4:{mode:'CONTA_PJ'}},products:[]}));
 process.env.WHATSAPP_QR_SESSION_DIR=tmp;process.env.CRM_ATOMIC_INBOUND='off';process.env.WHATSAPP_PIPELINE_TIMEOUT_MS='400';process.env.WHATSAPP_SEND_TIMEOUT_MS='200';
 
 // ---- Baileys falso -------------------------------------------------------------------------

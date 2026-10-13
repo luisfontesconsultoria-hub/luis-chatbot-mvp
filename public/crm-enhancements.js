@@ -17,8 +17,8 @@
   function currentLead(){return state?.selected||null}
   function makeField(key,label,lead){
     const value=lead?.[key] ?? '';
-    if(key==='interest') return `<label>${label}<select name="${key}"><option value="">Selecione</option><option value="Conta PJ" ${value==='Conta PJ'?'selected':''}>Conta PJ</option><option value="Máquina de cartão" ${value==='Máquina de cartão'?'selected':''}>Máquina de cartão</option><option value="Conta PJ + Máquina" ${value==='Conta PJ + Máquina'?'selected':''}>Conta PJ + Máquina</option><option value="Outro" ${value==='Outro'?'selected':''}>Outro</option></select></label>`;
-    if(key==='stage') return `<label>${label}<select name="${key}"><option value="">Selecione</option><option ${value==='NEW'?'selected':''} value="NEW">Novo</option><option ${value==='QUALIFYING'?'selected':''} value="QUALIFYING">Em qualificação</option><option ${value==='QUALIFIED'?'selected':''} value="QUALIFIED">Qualificado</option><option ${value==='ACCEPTED'?'selected':''} value="ACCEPTED">Oportunidade</option><option ${value==='SCHEDULING'?'selected':''} value="SCHEDULING">Agendamento</option><option ${value==='CONFIRMED'?'selected':''} value="CONFIRMED">Confirmado</option><option ${value==='NEGOTIATION'?'selected':''} value="NEGOTIATION">Negociação</option><option ${value==='AGUARDANDO_RETORNO'?'selected':''} value="AGUARDANDO_RETORNO">Aguardando retorno</option><option ${value==='AGUARDANDO_RETORNO_DO_LUIS'?'selected':''} value="AGUARDANDO_RETORNO_DO_LUIS">Aguardando atendimento</option><option ${value==='CONVERTIDO'?'selected':''} value="CONVERTIDO">Convertido</option><option ${value==='PERDIDO'?'selected':''} value="PERDIDO">Encerrado</option></select></label>`;
+    if(key==='interest'){const known=['Conta PJ','Máquina de cartão','Conta PJ + Máquina','Outro'];const custom=value&&!known.includes(value)?`<option value="${esc(value)}" selected>${esc(value)}</option>`:'';return `<label>${label}<select name="${key}"><option value="">Selecione</option>${custom}<option value="Conta PJ" ${value==='Conta PJ'?'selected':''}>Conta PJ</option><option value="Máquina de cartão" ${value==='Máquina de cartão'?'selected':''}>Máquina de cartão</option><option value="Conta PJ + Máquina" ${value==='Conta PJ + Máquina'?'selected':''}>Conta PJ + Máquina</option><option value="Outro" ${value==='Outro'?'selected':''}>Outro</option></select></label>`;}
+    if(key==='stage') return `<label>${label}<select name="${key}"><option value="">Selecione</option><option ${value==='NEW'?'selected':''} value="NEW">Novo</option><option ${value==='QUALIFYING'?'selected':''} value="QUALIFYING">Em qualificação</option><option ${value==='QUALIFIED'?'selected':''} value="QUALIFIED">Qualificado</option><option ${value==='ACCEPTED'?'selected':''} value="ACCEPTED">Oportunidade</option><option ${value==='SCHEDULING'?'selected':''} value="SCHEDULING">Agendamento</option><option ${value==='CONFIRMED'?'selected':''} value="CONFIRMED">Confirmado</option><option ${value==='NEGOTIATION'?'selected':''} value="NEGOTIATION">Negociação</option><option ${value==='AGUARDANDO_RETORNO'?'selected':''} value="AGUARDANDO_RETORNO">Aguardando retorno</option><option ${value==='AGUARDANDO_RETORNO_DO_LUIS'?'selected':''} value="AGUARDANDO_RETORNO_DO_LUIS">Aguardando atendimento</option><option ${value==='CONVERTIDO'?'selected':''} value="CONVERTIDO">Convertido</option><option ${value==='PERDIDO'?'selected':''} value="PERDIDO">Encerrado</option><option ${value==='REEMBOLSADO'?'selected':''} value="REEMBOLSADO">Reembolsado</option></select></label>`;
     if(key==='painPoint') return `<label class="crm-edit-wide">${label}<textarea name="${key}">${esc(value)}</textarea></label>`;
     return `<label>${label}<input name="${key}" value="${esc(value)}"></label>`;
   }
@@ -37,13 +37,24 @@
     if(!b){b=document.createElement('button');b.id='crm-edit-lead';b.className='ghost crm-edit-btn';b.type='button';b.textContent='Editar cliente';head.appendChild(b)}
     b.onclick=openEditor;
   }
+  const HUMAN_GATES={HUMAN_HANDOFF:'Devolver ao robô',AGUARDANDO_RETORNO_DO_LUIS:'Liberar para o robô seguir',AGUARDANDO_CONFIRMACAO_AGENDA:'Confirmar agenda e liberar'};
+  /** Botão na conversa para tirar o cliente da fila humana e devolver ao robô. */
+  function addReleaseButton(){
+    const head=q('.chat-head');if(!head)return;
+    const lead=currentLead();const label=lead?HUMAN_GATES[String(lead.status||'').toUpperCase()]:null;
+    let b=q('#crm-release-lead');
+    if(!label){if(b)b.remove();return}
+    if(!b){b=document.createElement('button');b.id='crm-release-lead';b.className='primary crm-edit-btn';b.type='button';head.appendChild(b)}
+    b.textContent=label;
+    b.onclick=async()=>{const current=currentLead();if(!current)return;b.disabled=true;try{const r=await api(`/api/crm/leads/${encodeURIComponent(current.id)}/human-release`,{method:'POST',body:'{}'});const idx=state.leads.findIndex(x=>String(x.id)===String(current.id));if(idx>=0&&r?.lead)state.leads[idx]={...state.leads[idx],...r.lead};if(r?.lead)state.selected={...current,...r.lead};await showConversation(current.id);toast('Cliente liberado. O robô responde na próxima mensagem dele.');}catch(err){toast(err?.data?.error||err?.message||'Não foi possível liberar o cliente.');}finally{b.disabled=false}};
+  }
   function wireComposer(){
     const form=q('#send-form');if(!form||form.dataset.crmEnhanced==='1')return;form.dataset.crmEnhanced='1';form.onsubmit=async e=>{e.preventDefault();const lead=currentLead(),input=q('#send-text');const text=String(input?.value||'').trim();if(!lead||!text)return;const btn=form.querySelector('button');btn.disabled=true;try{await api(`/api/crm/leads/${encodeURIComponent(lead.id)}/messages`,{method:'POST',body:JSON.stringify({text})});input.value='';await showConversation(lead.id);toast('Mensagem enviada pelo WhatsApp');}catch(err){toast(err?.data?.error||err?.message||'Não foi possível enviar a mensagem.');}finally{btn.disabled=false}};
   }
   function wrapConversation(){
     if(typeof window.showConversation!=='function'||window.__crmEnhancedConversation)return;
-    const original=window.showConversation;window.showConversation=async function(id){const r=await original(id);addEditButton();wireComposer();return r};window.__crmEnhancedConversation=true;
+    const original=window.showConversation;window.showConversation=async function(id){const r=await original(id);addEditButton();addReleaseButton();wireComposer();return r};window.__crmEnhancedConversation=true;
   }
-  function enhance(){wrapConversation();addEditButton();wireComposer()}
+  function enhance(){wrapConversation();addEditButton();addReleaseButton();wireComposer()}
   window.addEventListener('load',enhance);setInterval(enhance,1500);
 })();

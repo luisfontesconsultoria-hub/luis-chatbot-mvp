@@ -32,8 +32,10 @@ Variáveis principais:
 - `OLLAMA_BASE_URL` e `OLLAMA_MODEL` quando usar Ollama local
 - `AI_ASSIST_ENABLED=true|false`
 - `CRM_KNOWLEDGE_BASE` opcional: contexto comercial controlado enviado ao assistente
+- `WHATSAPP_QR_SESSION_DIR`: pasta em disco persistente para as sessões do WhatsApp e a configuração do robô
+- `SDR_SETTINGS_FILE` opcional: caminho do arquivo de configuração do robô (padrão: `sdr-settings.json` dentro de `WHATSAPP_QR_SESSION_DIR`)
 
-O CRM possui até 4 slots independentes de WhatsApp, cada um destinado a um número/canal separado. A plataforma não implementa disparos em massa; os canais são para atendimento de mensagens recebidas e respostas comerciais individuais.
+O CRM possui até 4 slots independentes de WhatsApp, cada um destinado a um número/canal separado. Cada número tem um modo próprio do robô (desligado, roteiro Conta PJ ou venda de produto), configurado no painel; o padrão é desligado. Ver `docs/robo-de-vendas.md`. A plataforma não implementa disparos em massa; os canais são para atendimento de mensagens recebidas e respostas comerciais individuais.
 
 O SDR mantém uma camada determinística de segurança/estado e usa a IA como camada assistiva. Histórico recente da conversa e a base de conhecimento configurada podem ser enviados ao modelo sem expor credenciais.
 

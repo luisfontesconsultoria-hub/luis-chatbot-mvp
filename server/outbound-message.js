@@ -1,6 +1,7 @@
 function createOutboundMessageHandler({ repository, sender }) {
   if (!repository || !sender) throw new Error('OUTBOUND_DEPENDENCIES_REQUIRED');
-  return async function send({ lead, text, externalMessageId = null }) {
+  /** origin marca quem escreveu (ex.: 'SDR' para o robô); o robô só conta as próprias respostas. */
+  return async function send({ lead, text, externalMessageId = null, origin = null }) {
     const jid=lead?.whatsappJid||lead?.whatsapp_jid||null;
     if (!lead?.phone && !jid) throw new Error('LEAD_WHATSAPP_IDENTITY_REQUIRED');
     if (!text) throw new Error('OUTBOUND_TEXT_REQUIRED');
@@ -12,7 +13,7 @@ function createOutboundMessageHandler({ repository, sender }) {
       direction: 'OUTBOUND',
       external_message_id: providerMessageId,
       text_content: text,
-      metadata: { provider: sender.provider || 'META_WHATSAPP', whatsapp_jid: jid }
+      metadata: { provider: sender.provider || 'META_WHATSAPP', whatsapp_jid: jid, ...(origin ? { origin } : {}) }
     });
     if (typeof repository.createEvent === 'function') {
       await repository.createEvent({

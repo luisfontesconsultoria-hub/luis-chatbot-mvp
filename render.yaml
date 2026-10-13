@@ -2,10 +2,14 @@ services:
   - type: web
     name: luis-chatbot-mvp
     runtime: node
-    plan: free
+    plan: starter
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /health
+    disk:
+      name: disk
+      mountPath: /var/data
+      sizeGB: 1
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
@@ -50,3 +54,5 @@ services:
         sync: false
       - key: WHATSAPP_QR_SESSION_DIR
         value: /var/data/whatsapp-sessions
+      - key: AFFILIATE_WEBHOOK_SECRET
+        sync: false
