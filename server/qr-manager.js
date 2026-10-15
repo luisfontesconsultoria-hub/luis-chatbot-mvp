@@ -118,7 +118,11 @@ const MAX_AUTO_RECONNECT_ATTEMPTS=6;
 function backoffDelay(retryCount){return Math.min(2500*Math.pow(2,retryCount),60000)}
 function nextReconnectAttempt(id){const n=(retryCounts.get(id)||0)+1;retryCounts.set(id,n);return{attempt:n,delay:backoffDelay(n),exceeded:n>MAX_AUTO_RECONNECT_ATTEMPTS}}
 function resetReconnectAttempts(id){retryCounts.delete(id)}
-function shouldProcessUpsert(type){return type==='notify'}
+// 'notify' = mensagem ao vivo. 'append' = mensagem que ficou guardada no servidor do WhatsApp
+// (entregue com atributo offline, ex.: durante uma reconexão). As duas são conversa real e
+// precisam ir pro CRM; a 'append' antiga só não dispara resposta automática (ver isStaleForAutoReply).
+function shouldProcessUpsert(type){return type==='notify'||type==='append'}
+function isStaleForAutoReply(type,timestampIso,now=Date.now()){if(type!=='append')return false;const ts=Date.parse(timestampIso||'');return !Number.isFinite(ts)||(now-ts)>SPOOL_AUTOREPLY_MAX_AGE_MS}
 function scheduleReconnect(id,repository,env,delay=800){const current=sessions.get(id);if(!current||current.reconnectTimer||current.stopped)return;current.reconnectTimer=setTimeout(()=>{current.reconnectTimer=null;if(sessions.get(id)===current)sessions.delete(id);connect(id,{repository,env,auto:true}).catch(e=>{const s=sessions.get(id);if(s){s.status='ERROR';s.lastError=e.message}})},delay)}
 function messageText(message={}){return message?.conversation||message?.extendedTextMessage?.text||message?.imageMessage?.caption||message?.videoMessage?.caption||message?.documentMessage?.caption||''}
 function messageTimestamp(value){if(value===undefined||value===null)return new Date().toISOString();const n=Number(value);return Number.isFinite(n)&&n>0?new Date(n*1000).toISOString():new Date().toISOString()}
@@ -157,6 +161,7 @@ async function connect(slot,{repository,env=process.env,auto=false}={}){
   const sender={provider:'BAILEYS_QR',async sendText({to,jid,text}){if(!current.socket)throw new Error('WHATSAPP_QR_NOT_CONNECTED');const direct=normalizeIndividualJid(jid)||normalizeIndividualJid(to);const phone=String(to||'').replace(/\D/g,'');const target=direct||(phone?`${phone}@s.whatsapp.net`:null);if(!target)throw new Error('WHATSAPP_RECIPIENT_REQUIRED');const r=await deadline(current.socket.sendMessage(target,{text:String(text).slice(0,4096)}),SEND_TIMEOUT_MS,'WHATSAPP_SEND_TIMEOUT');if(r?.key?.id)current.sentMessageIds.add(r.key.id);return{messages:[{id:r?.key?.id||null}],raw:r}},async sendTyping({to,jid}){if(!current.socket)return false;const direct=normalizeIndividualJid(jid)||normalizeIndividualJid(to);const phone=String(to||'').replace(/\D/g,'');const target=direct||(phone?`${phone}@s.whatsapp.net`:null);if(!target||typeof current.socket.sendPresenceUpdate!=='function')return false;await deadline(current.socket.sendPresenceUpdate('composing',target),5000,'WHATSAPP_TYPING_TIMEOUT');return true}};
   const sdr=createProductionSdrGateway({repository,sender,env,slot:id});
   const pipeline=createWebhookPipeline({repository,sdrGateway:sdr,trace:(stage,key,extra)=>traceLog(id,correlationId(key),stage,extra)});
+  const persistOnlyPipeline=createWebhookPipeline({repository,trace:(stage,key,extra)=>traceLog(id,correlationId(key),stage,extra)});
   spoolProcessors.set(id,buildSpoolProcessor({repository,sdrGateway:sdr}));ensureSpoolTimer();
   let version;try{version=await fetchLatestBaileysVersion()}catch(_){version=null}
   const sock=makeWASocket({logger:createBaileysLogger(),auth:state,browser:Browsers.ubuntu('Chrome'),version:version?.version,markOnlineOnConnect:false,syncFullHistory:true,printQRInTerminal:false,connectTimeoutMs:60000,defaultQueryTimeoutMs:60000,qrTimeout:120000,keepAliveIntervalMs:25000,retryRequestDelayMs:3000,generateHighQualityLinkPreview:false});
@@ -187,6 +192,9 @@ async function connect(slot,{repository,env=process.env,auto=false}={}){
         const text=messageText(msg.message),externalId=msg.key?.id||null;
         if(msg.key?.fromMe){
           if(externalId&&current.sentMessageIds.has(externalId)){current.sentMessageIds.delete(externalId);continue}
+          // Mensagens técnicas do próprio aparelho (reação, chave de grupo, sincronização, apagada) não têm texto:
+          // não são conversa e antes viravam centenas de registros vazios no CRM.
+          if(!String(text||'').trim()){traceLog(id,cid,'OWN_NON_TEXT_SKIPPED');continue}
           const lead=await findOrCreateWhatsappLead(repository,{...identity,source:'WHATSAPP'});
           await repository.createMessage({lead_id:lead.id,channel:'WHATSAPP',direction:'OUTBOUND',external_message_id:externalId,text_content:text,metadata:{provider:'BAILEYS_QR',slot:id,source:'WHATSAPP_MANUAL',whatsapp_jid:identity.jid}});
           await repository.createEvent({lead_id:lead.id,type:'WHATSAPP_MANUAL_OUTBOUND',idempotency_key:externalId?`WHATSAPP_MANUAL_OUTBOUND:${externalId}`:null,payload:{external_message_id:externalId,slot:id,whatsapp_jid:identity.jid}});
@@ -195,7 +203,9 @@ async function connect(slot,{repository,env=process.env,auto=false}={}){
         payload={channel:'WHATSAPP',external_message_id:externalId,phone:identity.phone,whatsapp_jid:identity.jid,name:msg.pushName||null,timestamp:messageTimestamp(msg.messageTimestamp),type:'text',text,media_url:null,source:`WHATSAPP_QR_SLOT_${id}`,campaign:null};
         const startedAt=Date.now();
         let outcomes;
-        try{outcomes=await deadline(pipeline([payload]),PIPELINE_TIMEOUT_MS,'WHATSAPP_PIPELINE_TIMEOUT')}
+        const noAutoReply=isStaleForAutoReply(type,payload.timestamp);
+        if(type==='append')console.log('WHATSAPP_OFFLINE_INBOUND',{slot:id,cid,autoReply:!noAutoReply});
+        try{outcomes=await deadline((noAutoReply?persistOnlyPipeline:pipeline)([payload]),PIPELINE_TIMEOUT_MS,'WHATSAPP_PIPELINE_TIMEOUT')}
         catch(e){if(e?.code!=='WHATSAPP_PIPELINE_TIMEOUT')throw e;current.lastError=`MESSAGE_PIPELINE_TIMEOUT:${PIPELINE_TIMEOUT_MS}ms`;console.error('WHATSAPP_PIPELINE_TIMEOUT',{slot:id,cid,timeoutMs:PIPELINE_TIMEOUT_MS});spoolInbound(id,payload,'WHATSAPP_PIPELINE_TIMEOUT');continue}
         const failure=(outcomes||[]).find(x=>x?.status==='error');
         if(failure){current.lastError=`MESSAGE_PIPELINE_ERROR:${failure.error||'PROCESSING_ERROR'}`;console.error('WHATSAPP_PIPELINE_ERROR',{slot:id,cid,ms:Date.now()-startedAt,error:failure.error||'PROCESSING_ERROR'});spoolInbound(id,payload,failure.error)}
@@ -210,4 +220,4 @@ async function disconnect(slot){const id=slotId(slot),c=sessions.get(id);if(c?.r
 async function send(slot,{to,text}){const id=slotId(slot),c=sessions.get(id);if(!c?.socket||c.status!=='CONNECTED')throw new Error('WHATSAPP_QR_NOT_CONNECTED');const direct=normalizeIndividualJid(to),phone=String(to||'').replace(/\D/g,''),target=direct||(phone?`${phone}@s.whatsapp.net`:null);if(!target)throw new Error('WHATSAPP_RECIPIENT_REQUIRED');const r=await c.socket.sendMessage(target,{text:String(text).slice(0,4096)});if(r?.key?.id)c.sentMessageIds.add(r.key.id);return r}
 function list(){return Array.from({length:MAX_SLOTS},(_,i)=>status(i+1))}
 async function restoreSavedSessions({repository,env=process.env}={}){const restored=[];if(!repository||String(env.WHATSAPP_AUTO_RESTORE||'true').toLowerCase()==='false')return restored;const limit=configuredMaxSlots(env);for(let id=1;id<=MAX_SLOTS;id++){if(!hasSavedSession(id))continue;if(id>limit){logStatus(id,'RESTORE_SKIPPED_SLOT_DISABLED',{maxSlots:limit});continue}try{await connect(id,{repository,env,auto:true});restored.push(id);logStatus(id,'RESTORE_STARTED')}catch(e){console.error('WHATSAPP_RESTORE_FAILED',{slot:id,error:e.message})}}return restored}
-module.exports={installSignalLogGuard,createBaileysLogger,sanitizeLogArgs,isNonPrivateChat,correlationId,maskJid,PIPELINE_TIMEOUT_MS,SEND_TIMEOUT_MS,MAX_SLOTS,connect,disconnect,send,status,list,jidToPhone,normalizeIndividualJid,extractInboundJid,extractInboundPhone,resolveMessageIdentity,resolveMessagePhone,slotId,isSessionStale,STALE_SESSION_TIMEOUT_MS,LID_MAPPING_TIMEOUT_MS,backoffDelay,MAX_AUTO_RECONNECT_ATTEMPTS,nextReconnectAttempt,resetReconnectAttempts,shouldProcessUpsert,credsAreRegistered,hasSavedSession,nextQrRound,resetQrRounds,MAX_QR_ROUNDS,restoreSavedSessions,configuredMaxSlots,BASE_DIR,buildSpoolProcessor,getSpool,replaySpool,SPOOL_AUTOREPLY_MAX_AGE_MS};
+module.exports={installSignalLogGuard,createBaileysLogger,sanitizeLogArgs,isNonPrivateChat,correlationId,maskJid,PIPELINE_TIMEOUT_MS,SEND_TIMEOUT_MS,MAX_SLOTS,connect,disconnect,send,status,list,jidToPhone,normalizeIndividualJid,extractInboundJid,extractInboundPhone,resolveMessageIdentity,resolveMessagePhone,slotId,isSessionStale,STALE_SESSION_TIMEOUT_MS,LID_MAPPING_TIMEOUT_MS,backoffDelay,MAX_AUTO_RECONNECT_ATTEMPTS,nextReconnectAttempt,resetReconnectAttempts,shouldProcessUpsert,isStaleForAutoReply,credsAreRegistered,hasSavedSession,nextQrRound,resetQrRounds,MAX_QR_ROUNDS,restoreSavedSessions,configuredMaxSlots,BASE_DIR,buildSpoolProcessor,getSpool,replaySpool,SPOOL_AUTOREPLY_MAX_AGE_MS};

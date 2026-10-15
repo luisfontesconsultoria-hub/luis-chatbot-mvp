@@ -138,6 +138,30 @@ async function scenario(name,fn){reset();try{await fn();results.push([name,'PASS
     assert.ok(await until(()=>tags().some(t=>TERMINAL.includes(t))));
     assert.ok(tags().includes('WHATSAPP_PIPELINE_ERROR'));assert.ok(tags().includes('WHATSAPP_INBOUND_SPOOLED'));assert.ok(qr.getSpool(slot).size()>=1);
   });
+  // Produção 13-15/10: o Baileys entrega como 'append' a mensagem que ficou guardada no servidor
+  // (atributo offline). Antes eram descartadas em silêncio e respostas de clientes sumiam do CRM.
+  await scenario('Append recente (entregue offline): vai pro CRM e o robô responde',async()=>{
+    const client=fakeClient();const {sock}=await open(client);
+    sock.ev.emit('messages.upsert',{type:'append',messages:[{key:{fromMe:false,remoteJid:'414141414141414@lid',id:'WAMID-APPEND-NEW'},pushName:'Cliente',messageTimestamp:Math.floor(Date.now()/1000)-60,message:{conversation:'Oi, vi o anúncio'}}]});
+    assert.ok(await until(()=>tags().includes('WHATSAPP_PIPELINE_OK')),'append recente não foi processado');
+    assert.strictEqual(client.db.messages.filter(m=>m.external_message_id==='WAMID-APPEND-NEW').length,1);
+    assert.ok(await until(()=>sock.sent.some(x=>x.jid==='414141414141414@lid')),'mensagem recente deve receber resposta do robô');assert.strictEqual(sock.sent.filter(x=>x.jid==='414141414141414@lid').length,1);
+  });
+  await scenario('Append antigo (>15 min): grava no CRM sem resposta automática',async()=>{
+    const client=fakeClient();const {sock}=await open(client);
+    sock.ev.emit('messages.upsert',{type:'append',messages:[{key:{fromMe:false,remoteJid:'424242424242424@lid',id:'WAMID-APPEND-OLD'},pushName:'Cliente',messageTimestamp:Math.floor(Date.now()/1000)-3*3600,message:{conversation:'Bom dia, tenho interesse'}}]});
+    assert.ok(await until(()=>tags().includes('WHATSAPP_PIPELINE_OK')),'append antigo não foi gravado');
+    assert.strictEqual(client.db.messages.filter(m=>m.external_message_id==='WAMID-APPEND-OLD').length,1,'mensagem antiga precisa aparecer no CRM');
+    await wait(150);const lead=client.db.messages.find(m=>m.external_message_id==='WAMID-APPEND-OLD').lead_id;assert.strictEqual(client.db.messages.filter(m=>m.lead_id===lead&&m.direction==='OUTBOUND').length,0,'robô não pode responder mensagem de horas atrás');assert.ok(!sock.sent.some(x=>x.jid==='424242424242424@lid'),'robô enviou para o cliente da mensagem antiga');
+  });
+  await scenario('Mensagem própria sem texto (técnica) não vira registro vazio',async()=>{
+    const client=fakeClient();const {sock}=await open(client);
+    sock.ev.emit('messages.upsert',{type:'notify',messages:[{key:{fromMe:true,remoteJid:'434343434343434@lid',id:'WAMID-OWN-EMPTY'},messageTimestamp:Math.floor(Date.now()/1000),message:{senderKeyDistributionMessage:{groupId:'x'}}}]});
+    sock.ev.emit('messages.upsert',{type:'notify',messages:[{key:{fromMe:true,remoteJid:'434343434343434@lid',remoteJidAlt:'5551966665555@s.whatsapp.net',id:'WAMID-OWN-TEXT'},messageTimestamp:Math.floor(Date.now()/1000),message:{conversation:'Bom dia, segue a proposta'}}]});
+    assert.ok(await until(()=>client.db.messages.length>=1));await wait(100);
+    assert.strictEqual(client.db.messages.length,1,`esperado só a mensagem com texto, gravou ${client.db.messages.length}`);
+    assert.strictEqual(client.db.messages[0].text_content,'Bom dia, segue a proposta');
+  });
   await scenario('Logs: estruturas Signal e JID completo não vazam',async()=>{
     const secret=Buffer.from('0123456789abcdef0123456789abcdef');
     const w=[];process.stdout.write=(c,...r)=>{w.push(String(c));return true};process.stderr.write=(c,...r)=>{w.push(String(c));return true};
