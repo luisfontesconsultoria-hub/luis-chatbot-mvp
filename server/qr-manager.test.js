@@ -10,8 +10,14 @@ assert.strictEqual(extractInboundJid({remoteJid:'12345@lid'}),'12345@lid');
 assert.strictEqual(extractInboundPhone({remoteJid:'12345@lid',participantPn:'5511777777777@s.whatsapp.net'}),'5511777777777');
 assert.strictEqual(shouldProcessUpsert('notify',null),true);
 assert.strictEqual(shouldProcessUpsert('notify','req-1'),true);
-assert.strictEqual(shouldProcessUpsert('append','req-1'),false);
-assert.strictEqual(shouldProcessUpsert('append',null),false);
+assert.strictEqual(shouldProcessUpsert('append','req-1'),true);
+assert.strictEqual(shouldProcessUpsert('append',null),true);
+assert.strictEqual(shouldProcessUpsert('history',null),false);
+{const {isStaleForAutoReply}=require('./qr-manager');const now=Date.parse('2026-10-15T10:00:00Z');
+assert.strictEqual(isStaleForAutoReply('notify','2026-10-14T10:00:00Z',now),false);
+assert.strictEqual(isStaleForAutoReply('append','2026-10-15T09:55:00Z',now),false);
+assert.strictEqual(isStaleForAutoReply('append','2026-10-15T09:00:00Z',now),true);
+assert.strictEqual(isStaleForAutoReply('append',null,now),true);}
 assert.strictEqual(extractInboundPhone({remoteJid:'12345@lid',remoteJidAlt:'5511999999999@s.whatsapp.net'}),'5511999999999');
 assert.strictEqual(extractInboundPhone({remoteJid:'5511888888888@s.whatsapp.net'}),'5511888888888');
 assert.strictEqual(extractInboundPhone({remoteJid:'12345@lid'}),null);
